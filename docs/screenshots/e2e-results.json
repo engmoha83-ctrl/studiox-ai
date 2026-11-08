@@ -1,0 +1,152 @@
+[
+ {
+  "name": "app boots and shows home screen",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "project created and editor opened",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "6 media files imported with metadata",
+  "pass": true,
+  "detail": "[('clip_a.mp4', 'video', 12, 1280), ('clip_b.mp4', 'video', 8, 1280), ('prores.mov', 'video', 5, 640), ('voice.wav', 'audio', 9, 0), ('music.mp3', 'audio', 20.04, 0), ('logo.png', 'image', 0, 800)]"
+ },
+ {
+  "name": "thumbnails generated for every asset",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "ProRes media flagged for proxy",
+  "pass": true,
+  "detail": "pending"
+ },
+ {
+  "name": "proxy generated for ProRes",
+  "pass": true,
+  "detail": "/root/.local/share/ai.studiox.editor/proxies/proxy-2d89002c9aa6c169.mp4"
+ },
+ {
+  "name": "duplicate import is detected (no second copy)",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "double-click adds clip to the timeline",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "second clip placed after the first on the main track",
+  "pass": true,
+  "detail": "[(0, 12), (12, 8)]"
+ },
+ {
+  "name": "video clip shows on timeline",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "split with S creates two clips",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "undo restores",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "redo re-applies",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "ripple delete removes clip and closes the gap",
+  "pass": true,
+  "detail": "[(0, 5), (5, 8)]"
+ },
+ {
+  "name": "mouse drag moves a clip on the timeline",
+  "pass": true,
+  "detail": "start=7.00"
+ },
+ {
+  "name": "mouse trim shortens a clip",
+  "pass": true,
+  "detail": "duration=4.00"
+ },
+ {
+  "name": "Arabic title template added",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "text edited from the inspector",
+  "pass": true,
+  "detail": "مرحبا بالعالم – Hello ٢٠٢٦"
+ },
+ {
+  "name": "cross dissolve applied",
+  "pass": true,
+  "detail": "{'duration': 0.6, 'type': 'dissolve'}"
+ },
+ {
+  "name": "image goes to a free video track above main",
+  "pass": true,
+  "detail": "V2"
+ },
+ {
+  "name": "music goes to an audio track",
+  "pass": true,
+  "detail": "A1"
+ },
+ {
+  "name": "inspector edits transform",
+  "pass": true,
+  "detail": "{'x': 650, 'scale': 0.25, 'flipH': False, 'y': -300, 'flipV': False, 'rotation': 0}"
+ },
+ {
+  "name": "preview decodes real video frames (testsrc colours)",
+  "pass": true,
+  "detail": "[255, 24, 0]"
+ },
+ {
+  "name": "playback advances the playhead",
+  "pass": true,
+  "detail": "2.87s"
+ },
+ {
+  "name": "export job finished",
+  "pass": true,
+  "detail": "null"
+ },
+ {
+  "name": "exported file duration matches the timeline",
+  "pass": true,
+  "detail": "20.03 vs 20.03"
+ },
+ {
+  "name": "exported file has H.264 video + AAC audio",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "project reopens with the full timeline",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "missing media detected and relink dialog shown",
+  "pass": true,
+  "detail": ""
+ },
+ {
+  "name": "Arabic UI switches the document to RTL",
+  "pass": true,
+  "detail": ""
+ }
+]
