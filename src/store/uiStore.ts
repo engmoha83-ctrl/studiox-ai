@@ -26,7 +26,7 @@ interface UiStore {
   set: (p: Partial<UiStore>) => void;
 }
 
-export const MIN_ZOOM = 2;
+export const MIN_ZOOM = 0.02; // px per second → fits ~14 hours in 1000 px
 export const MAX_ZOOM = 2000;
 
 export const useUi = create<UiStore>((set) => ({

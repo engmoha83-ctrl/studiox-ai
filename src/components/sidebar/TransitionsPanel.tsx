@@ -1,11 +1,10 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { applyTransition } from "../../editor/actions";
+import { beginDrag } from "../../editor/dragdrop";
 import { useUi } from "../../store/uiStore";
 import type { TransitionType } from "../../types/project";
 import { Button, NumberField, Row, Select } from "../common/ui";
-
-export const TRANSITION_DND = "application/x-studiox-transition";
 
 export const TRANSITIONS: { type: TransitionType; name: string; hint: string }[] = [
   { type: "fade", name: "Fade", hint: "Fades from / to black (or the layers below)." },
@@ -76,11 +75,7 @@ export default function TransitionsPanel() {
         {TRANSITIONS.map((tr) => (
           <button
             key={tr.type}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData(TRANSITION_DND, JSON.stringify({ type: tr.type, duration: dur }));
-              e.dataTransfer.effectAllowed = "copy";
-            }}
+            onPointerDown={(e) => beginDrag(e, { kind: "transition", type: tr.type, duration: dur }, t(tr.name))}
             onClick={() => applyTransition(tr.type, edge, dur)}
             className="rounded-md border border-line p-1.5 text-start hover:border-accent"
             title={t(tr.hint)}

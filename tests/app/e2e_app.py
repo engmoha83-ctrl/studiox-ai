@@ -139,12 +139,12 @@ def run(d):
     shot(d, "03-media-imported")
 
     # ---------------------------------------------------------------- M2: timeline
-    cards = d.find_elements(By.CSS_SELECTOR, "[draggable=true][title*='clip_a.mp4']")
+    cards = d.find_elements(By.CSS_SELECTOR, "[data-media='clip_a.mp4']")
     ActionChains(d).double_click(cards[0]).perform()
     ok = wait(lambda: clip_count(d) == 1, 10)
     check("double-click adds clip to the timeline", ok)
     js(d, "window.__studiox.seek(12)")
-    cards = d.find_elements(By.CSS_SELECTOR, "[draggable=true][title*='clip_b.mp4']")
+    cards = d.find_elements(By.CSS_SELECTOR, "[data-media='clip_b.mp4']")
     ActionChains(d).double_click(cards[0]).perform()
     wait(lambda: clip_count(d) == 2, 10)
     p = project(d)
@@ -211,6 +211,16 @@ def run(d):
     check("text edited from the inspector", tc["text"].startswith("مرحبا"), tc["text"])
     shot(d, "04-arabic-text-preview")
 
+    # drag a template from the Text panel onto the timeline (pointer-based DnD, works on WebView2)
+    n_text = len([c for c in project(d)["clips"].values() if c["type"] == "text"])
+    src = d.find_element(By.XPATH, "//button[contains(., 'BIG NEWS')]")
+    vclip = [c for c in project(d)["clips"].values() if c["type"] == "media"][0]
+    lane = d.find_element(By.CSS_SELECTOR, f"[data-clip='{vclip['id']}']")
+    ActionChains(d).move_to_element(src).click_and_hold().move_by_offset(30, 30).move_to_element(lane).move_by_offset(5, 0).release().perform()
+    time.sleep(0.8)
+    check("drag & drop of a text template onto the timeline", len([c for c in project(d)["clips"].values() if c["type"] == "text"]) == n_text + 1)
+    press(d, Keys.CONTROL, "z")
+
     # transition: select second video clip, apply cross dissolve from the Transitions panel
     p = project(d)
     vids = sorted([c for c in p["clips"].values() if c["type"] == "media"], key=lambda c: c["start"])
@@ -220,15 +230,22 @@ def run(d):
     xclick(d, "Cross dissolve")
     tin = project(d)["clips"][vids[1]["id"]].get("transitionIn")
     check("cross dissolve applied", tin and tin["type"] == "dissolve", str(tin))
+    # drag "Slide left" onto the OUT edge of the first clip
+    src = d.find_element(By.XPATH, "//button[.//div[text()='Slide left']]")
+    tgt = d.find_element(By.CSS_SELECTOR, f"[data-clip='{vids[0]['id']}']")
+    ActionChains(d).move_to_element(src).click_and_hold().move_by_offset(20, 20).move_to_element_with_offset(tgt, tgt.size["width"] // 2 - 8, 0).move_by_offset(2, 0).release().perform()
+    time.sleep(0.6)
+    tout = project(d)["clips"][vids[0]["id"]].get("transitionOut")
+    check("transition dragged onto a clip edge", tout and tout["type"] == "slide-left", str(tout))
 
     # add music on an audio track + logo overlay
     d.find_element(By.XPATH, "//button[.//span[text()='Media']]").click()
     time.sleep(0.4)
     js(d, "window.__studiox.seek(0)")
-    ActionChains(d).double_click(d.find_elements(By.CSS_SELECTOR, "[draggable=true][title*='music.mp3']")[0]).perform()
+    ActionChains(d).double_click(d.find_elements(By.CSS_SELECTOR, "[data-media='music.mp3']")[0]).perform()
     time.sleep(0.4)
     js(d, "window.__studiox.seek(2)")
-    ActionChains(d).double_click(d.find_elements(By.CSS_SELECTOR, "[draggable=true][title*='logo.png']")[0]).perform()
+    ActionChains(d).double_click(d.find_elements(By.CSS_SELECTOR, "[data-media='logo.png']")[0]).perform()
     time.sleep(0.6)
     p = project(d)
     logo = next(c for c in p["clips"].values() if c["type"] == "media" and next(m for m in p["media"] if m["id"] == c["mediaId"])["kind"] == "image")

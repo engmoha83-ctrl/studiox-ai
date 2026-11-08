@@ -58,10 +58,18 @@ function scaleAnim(anim: LayerAnim, unit: number): LayerAnim {
   return { ...anim, slideIn: sc(anim.slideIn), slideOut: sc(anim.slideOut) };
 }
 
-function alphaFilters(layer: RenderLayer): string[] {
+/** Does this layer need an alpha channel (opacity, fades, rotation corners)? */
+function needsAlpha(layer: RenderLayer): boolean {
+  const c = layer.clip;
+  const rot = c.type === "media" ? ((c.transform.rotation % 360) + 360) % 360 : 0;
+  return c.opacity < 0.999 || !!layer.anim.fadeIn || !!layer.anim.fadeOut || rot !== 0;
+}
+
+function alphaFilters(layer: RenderLayer, rgba: boolean): string[] {
   const out: string[] = [];
   const op = layer.clip.opacity;
-  if (op < 0.999) out.push(`colorchannelmixer=aa=${f(Math.max(0, op), 4)}`);
+  // planar YUV+alpha is much cheaper than RGBA for video layers; text PNGs stay RGBA
+  if (op < 0.999) out.push(rgba ? `colorchannelmixer=aa=${f(Math.max(0, op), 4)}` : `lutyuv=a=val*${f(Math.max(0, op), 4)}`);
   const ws = layer.windowStart;
   if (layer.anim.fadeIn) out.push(`fade=t=in:st=${f(layer.anim.fadeIn.start - ws)}:d=${f(layer.anim.fadeIn.dur)}:alpha=1`);
   if (layer.anim.fadeOut) out.push(`fade=t=out:st=${f(layer.anim.fadeOut.start - ws)}:d=${f(layer.anim.fadeOut.dur)}:alpha=1`);
@@ -219,7 +227,7 @@ export function buildExport(p: Project, s: ExportSettings, textPaths: Record<str
       const r = mediaRect(m.width, m.height, clip, CW, CH, unit);
       const c = clip.crop;
       if (c.left || c.top || c.right || c.bottom) parts.push(`crop=${Math.round(r.sw)}:${Math.round(r.sh)}:${Math.round(r.sx)}:${Math.round(r.sy)}`);
-      parts.push(`scale=${Math.max(1, Math.round(r.w))}:${Math.max(1, Math.round(r.h))}:flags=bicubic`, "format=rgba");
+      parts.push(`scale=${Math.max(1, Math.round(r.w))}:${Math.max(1, Math.round(r.h))}:flags=bicubic`, needsAlpha(layer) ? "format=yuva420p" : "format=yuv420p");
       if (clip.transform.flipH) parts.push("hflip");
       if (clip.transform.flipV) parts.push("vflip");
       const rot = ((clip.transform.rotation % 360) + 360) % 360;
@@ -229,7 +237,7 @@ export function buildExport(p: Project, s: ExportSettings, textPaths: Record<str
       }
       geometry = { x: `${f(r.cx, 3)}-overlay_w/2`, y: `${f(r.cy, 3)}-overlay_h/2` };
     } else continue;
-    parts.push(...alphaFilters(layer));
+    parts.push(...alphaFilters(layer, isTextClip(clip)));
     parts.push(`setpts=PTS+${f(layer.windowStart)}/TB[l${layerIdx}]`);
     chains.push(parts.join(","));
     const xs = slideExpr(anim, "dx");

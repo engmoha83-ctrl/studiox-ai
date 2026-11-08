@@ -14,10 +14,10 @@ import { useUi, MAX_ZOOM, MIN_ZOOM } from "../../store/uiStore";
 import { player } from "../../preview/player";
 import * as A from "../../editor/actions";
 import { ensureFilmstrip, ensureWaveform } from "../../services/media";
-import { MEDIA_DND } from "../sidebar/MediaPanel";
-import { TEXT_DND, TEXT_PRESETS } from "../sidebar/TextPanel";
-import { TRANSITION_DND } from "../sidebar/TransitionsPanel";
+import { registerDropResolver, useDrag } from "../../editor/dragdrop";
 import { isMediaClip, isTextClip, type Clip, type MediaAsset, type Project, type Track, type TransitionType } from "../../types/project";
+
+registerDropResolver((x, y) => timelineDropTarget(x, y));
 import { IconBtn, cx, openContextMenu, promptText, confirmAction } from "../common/ui";
 
 const RULER_H = 26;
@@ -153,7 +153,7 @@ const ClipView = memo(function ClipView({
   viewWidth,
   onDown,
   onMenu,
-  onDropTransition,
+  dropEdge,
 }: {
   clip: Clip;
   media?: MediaAsset;
@@ -165,7 +165,7 @@ const ClipView = memo(function ClipView({
   viewWidth: number;
   onDown: (e: React.PointerEvent, c: Clip) => void;
   onMenu: (e: React.MouseEvent, c: Clip) => void;
-  onDropTransition: (c: Clip, edge: "in" | "out", data: string) => void;
+  dropEdge?: "in" | "out";
 }) {
   const left = clip.start * zoom;
   const width = Math.max(2, clip.duration * zoom);
@@ -178,15 +178,6 @@ const ClipView = memo(function ClipView({
       data-clip={clip.id}
       onPointerDown={(e) => onDown(e, clip)}
       onContextMenu={(e) => onMenu(e, clip)}
-      onDragOver={(e) => e.dataTransfer.types.includes(TRANSITION_DND) && (e.preventDefault(), e.stopPropagation())}
-      onDrop={(e) => {
-        const data = e.dataTransfer.getData(TRANSITION_DND);
-        if (!data) return;
-        e.preventDefault();
-        e.stopPropagation();
-        const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
-        onDropTransition(clip, e.clientX - r.left < r.width / 2 ? "in" : "out", data);
-      }}
       className={cx(
         "absolute top-[3px] overflow-hidden rounded-[5px] border text-[11px]",
         bg,
@@ -216,6 +207,7 @@ const ClipView = memo(function ClipView({
       {isTextClip(clip) && <div className="absolute inset-0 top-[18px]" />}
       {clip.transitionIn && <TransitionMark side="in" type={clip.transitionIn.type} width={clip.transitionIn.duration * zoom} />}
       {clip.transitionOut && <TransitionMark side="out" type={clip.transitionOut.type} width={clip.transitionOut.duration * zoom} />}
+      {dropEdge && <div className={cx("pointer-events-none absolute inset-y-0 z-[3] w-1/2 bg-violet-400/35", dropEdge === "in" ? "left-0" : "right-0")} />}
       {!track.locked && (
         <>
           <div className="absolute inset-y-0 left-0 z-[2] w-[6px] cursor-ew-resize hover:bg-white/40" />
@@ -240,8 +232,8 @@ function Ruler({ zoom, width, scrollLeft, viewWidth, onScrub }: { zoom: number; 
     const ctx = c.getContext("2d")!;
     ctx.scale(dpr, dpr);
     ctx.clearRect(0, 0, viewWidth, RULER_H);
-    const steps = [1 / fps, 2 / fps, 5 / fps, 10 / fps, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 1800, 3600];
-    const major = steps.find((s) => s * zoom >= 80) ?? 3600;
+    const steps = [1 / fps, 2 / fps, 5 / fps, 10 / fps, 0.5, 1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400, 28800];
+    const major = steps.find((s) => s * zoom >= 80) ?? 28800;
     const minor = major / (major >= 1 ? 5 : 2);
     ctx.font = "10px Inter, sans-serif";
     ctx.textBaseline = "top";
@@ -351,7 +343,8 @@ export default function Timeline() {
   const [view, setView] = useState({ left: 0, width: 1000 });
   const [drag, setDrag] = useState<DragState | null>(null);
   const dragRef = useRef<DragState | null>(null);
-  const [dropHint, setDropHint] = useState<{ time: number; trackId: string } | null>(null);
+  const dropHint = useDrag((s) => s.hint);
+  const clipHint = useDrag((s) => s.clipHint);
 
   const shown = drag?.preview ?? project;
   const rows = useMemo(() => {
@@ -368,6 +361,13 @@ export default function Timeline() {
   layout.el = scrollRef.current;
   layout.rows = rows;
   layout.zoom = zoom;
+
+  // Fit the whole edit when the first clips land on an empty timeline.
+  const prevDuration = useRef(duration);
+  useEffect(() => {
+    if (prevDuration.current === 0 && duration > 0 && !drag) A.zoomToFit(scrollRef.current?.clientWidth ?? 1000);
+    prevDuration.current = duration;
+  }, [duration, drag]);
 
   useLayoutEffect(() => {
     const el = scrollRef.current!;
@@ -569,17 +569,6 @@ export default function Timeline() {
     [t],
   );
 
-  const onDropTransition = useCallback(
-    (c: Clip, edge: "in" | "out", data: string) => {
-      try {
-        const { type, duration } = JSON.parse(data) as { type: TransitionType; duration: number };
-        A.applyTransition(type, edge, duration, [c.id]);
-      } catch {
-        /* ignore */
-      }
-    },
-    [],
-  );
 
   const laneMenu = (e: React.MouseEvent, track: Track) => {
     const time = timeAt(e.clientX);
@@ -605,31 +594,6 @@ export default function Timeline() {
     scrub(e);
   };
 
-  // ------------------------------------------------------------ HTML5 drops from the library
-  const onDragOver = (e: React.DragEvent) => {
-    const types = e.dataTransfer.types;
-    if (!types.includes(MEDIA_DND) && !types.includes(TEXT_DND)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "copy";
-    const row = rowAt(e.clientY);
-    setDropHint({ time: snapFrame(timeAt(e.clientX), project.settings.fps), trackId: row >= 0 ? rows[row].id : "" });
-  };
-  const onDrop = (e: React.DragEvent) => {
-    setDropHint(null);
-    const mediaId = e.dataTransfer.getData(MEDIA_DND);
-    const textId = e.dataTransfer.getData(TEXT_DND);
-    if (!mediaId && !textId) return;
-    e.preventDefault();
-    const row = rowAt(e.clientY);
-    const time = snapFrame(timeAt(e.clientX), project.settings.fps);
-    if (mediaId) {
-      const m = project.media.find((x) => x.id === mediaId);
-      if (m) A.addMediaToTimeline(m, time, row >= 0 ? rows[row].id : undefined);
-    } else {
-      const preset = TEXT_PRESETS.find((p) => p.id === textId);
-      if (preset) A.addText(preset.text, preset.style, preset.duration, time);
-    }
-  };
 
   const addTrack = (kind: Track["kind"]) => useProject.getState().commit(t("Add track"), (d) => void ops.addTrack(d, kind));
   const clipsByTrack = useMemo(() => {
@@ -708,7 +672,7 @@ export default function Timeline() {
           </div>
         </div>
         {/* lanes */}
-        <div ref={scrollRef} className="relative min-w-0 flex-1 overflow-auto bg-bg" onScroll={onScroll} onWheel={onWheel} onDragOver={onDragOver} onDragLeave={() => setDropHint(null)} onDrop={onDrop}>
+        <div ref={scrollRef} className="relative min-w-0 flex-1 overflow-auto bg-bg" onScroll={onScroll} onWheel={onWheel}>
           <Ruler zoom={zoom} width={contentW} scrollLeft={view.left} viewWidth={view.width} onScrub={scrub} />
           <div className="relative" style={{ width: contentW, height: Math.max(totalH, 40) }}>
             {shown.tracks.map((tr, i) => (
@@ -732,7 +696,7 @@ export default function Timeline() {
                     viewWidth={view.width}
                     onDown={onClipDown}
                     onMenu={onClipMenu}
-                    onDropTransition={onDropTransition}
+                    dropEdge={clipHint?.id === c.id ? clipHint.edge : undefined}
                   />
                 ))}
               </div>

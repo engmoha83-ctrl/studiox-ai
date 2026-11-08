@@ -72,7 +72,7 @@ function render(s: ExportSettings, name: string, ffMajor = 6): string {
   writeFileSync(script, plan.filterGraph);
   const flag = ffMajor >= 7 ? "-/filter_complex" : "-filter_complex_script";
   try {
-    execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", ...plan.inputArgs, flag, script, ...plan.outputArgs, out], { stdio: ["ignore", "pipe", "pipe"] });
+    execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", "-filter_complex_threads", "4", ...plan.inputArgs, flag, script, ...plan.outputArgs, out], { stdio: ["ignore", "pipe", "pipe"] });
   } catch (e: any) {
     throw new Error(`FFmpeg failed:\n${e.stderr?.toString()}\nGRAPH:\n${plan.filterGraph}`);
   }

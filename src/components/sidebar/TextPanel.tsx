@@ -1,9 +1,8 @@
 import { useTranslation } from "react-i18next";
 import { Plus } from "lucide-react";
 import { addText } from "../../editor/actions";
+import { beginDrag } from "../../editor/dragdrop";
 import type { TextStyle } from "../../types/project";
-
-export const TEXT_DND = "application/x-studiox-text";
 
 export interface TextPreset {
   id: string;
@@ -47,11 +46,7 @@ export default function TextPanel() {
         {TEXT_PRESETS.map((p) => (
           <button
             key={p.id}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData(TEXT_DND, p.id);
-              e.dataTransfer.effectAllowed = "copy";
-            }}
+            onPointerDown={(e) => beginDrag(e, { kind: "text", text: p.text, style: p.style, duration: p.duration }, p.text.split("\n")[0])}
             onClick={() => addText(p.text, p.style, p.duration)}
             className="group relative flex aspect-video flex-col items-center justify-center overflow-hidden rounded-md border border-line bg-gradient-to-br from-panel-3 to-panel-2 p-2 hover:border-accent"
             title={t("Click to add at the playhead, or drag to the timeline")}

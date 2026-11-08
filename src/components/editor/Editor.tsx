@@ -10,6 +10,7 @@ import { useUi } from "../../store/uiStore";
 import { importFiles, MEDIA_EXTENSIONS } from "../../services/media";
 import { addMediaToTimeline } from "../../editor/actions";
 import { useShortcuts } from "../../hooks/useShortcuts";
+import { useDrag } from "../../editor/dragdrop";
 import TopBar from "./TopBar";
 import Sidebar from "../sidebar/Sidebar";
 import PreviewPanel from "../preview/PreviewPanel";
@@ -18,6 +19,16 @@ import Timeline, { timelineDropTarget, timelineWidth } from "../timeline/Timelin
 import ExportDialog from "../export/ExportDialog";
 import ExportQueue from "../export/ExportQueue";
 import { HistoryDialog, ProjectSettingsDialog, RelinkDialog, ShortcutsDialog } from "./Dialogs";
+
+function DragGhost() {
+  const { payload, label, x, y } = useDrag();
+  if (!payload) return null;
+  return (
+    <div className="pointer-events-none fixed z-[200] max-w-[220px] truncate rounded-md border border-violet-400/60 bg-panel-2/95 px-2.5 py-1 text-[12px] shadow-xl" style={{ left: x + 12, top: y + 12 }} dir="auto">
+      {label}
+    </div>
+  );
+}
 
 export default function Editor() {
   const { t } = useTranslation();
@@ -96,6 +107,7 @@ export default function Editor() {
         </Panel>
       </Group>
       <ExportQueue />
+      <DragGhost />
       {dialogs.export && <ExportDialog />}
       {dialogs.history && <HistoryDialog />}
       {dialogs.shortcuts && <ShortcutsDialog />}

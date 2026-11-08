@@ -9,11 +9,10 @@ import { formatBytes, shortTime } from "../../lib/time";
 import { useProject } from "../../store/projectStore";
 import { useUi } from "../../store/uiStore";
 import { addMediaToTimeline } from "../../editor/actions";
+import { beginDrag } from "../../editor/dragdrop";
 import { createProxy, MEDIA_EXTENSIONS, relinkMedia } from "../../services/media";
 import type { MediaAsset, MediaKind } from "../../types/project";
 import { Button, IconBtn, Select, confirmAction, cx, openContextMenu, promptText, Empty } from "../common/ui";
-
-export const MEDIA_DND = "application/x-studiox-media";
 
 export default function MediaPanel({ importMedia, onlyKind }: { importMedia: () => void; onlyKind?: MediaKind }) {
   const { t } = useTranslation();
@@ -147,11 +146,8 @@ export default function MediaPanel({ importMedia, onlyKind }: { importMedia: () 
             {list.map((m) => (
               <div
                 key={m.id}
-                draggable={!m.missing}
-                onDragStart={(e) => {
-                  e.dataTransfer.setData(MEDIA_DND, m.id);
-                  e.dataTransfer.effectAllowed = "copy";
-                }}
+                data-media={m.name}
+                onPointerDown={(e) => !m.missing && beginDrag(e, { kind: "media", id: m.id }, m.name)}
                 onClick={() => set({ selectedMediaId: m.id, selection: [] })}
                 onDoubleClick={() => addMediaToTimeline(m)}
                 onContextMenu={(e) => menu(e, m)}

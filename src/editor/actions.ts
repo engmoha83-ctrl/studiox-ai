@@ -153,7 +153,7 @@ export function zoomToFit(width: number) {
   const p = getProject();
   if (!p) return;
   const d = Math.max(5, ops.projectDuration(p));
-  useUi.getState().setZoom((width - 40) / d);
+  useUi.getState().setZoom((width - 60) / d);
 }
 
 export function selectedMediaClip() {

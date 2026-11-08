@@ -1,6 +1,13 @@
 # STUDIOX AI — Development Status
 
-_Last updated: session 1 (2026-11-08)_
+_Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
+
+### Windows feedback (0.1.0) and fixes in 0.1.1
+* Import, export, rotate/scale/crop confirmed working on Windows by the user.
+* **Text/transitions could not be dragged onto the timeline on Windows** — WebView2 swallows HTML5 drag events while OS file-drop is enabled. Replaced with a pointer-based in-app drag system (`src/editor/dragdrop.ts`); OS file drop still works.
+* **Zoom-out could not show long videos** — minimum zoom lowered to 0.02 px/s, larger ruler steps, automatic zoom-to-fit when the first clips are added.
+* **Export speed** — filter graph now uses every CPU core (`-filter_complex_threads`), video layers composite in YUV(A) 4:2:0 instead of RGBA, and layers without opacity/fades/rotation skip the alpha channel.
+
 
 ## Milestone status
 
@@ -34,7 +41,7 @@ _Last updated: session 1 (2026-11-08)_
 - [x] Undo/redo (300 steps, named commands, coalesced slider edits), autosave (1.5 s), automatic backups (5 min, 30 kept), named versions
 - [x] English / Arabic UI with full RTL mirroring (timeline & preview stay LTR by design)
 - [x] Keyboard shortcuts (23) + shortcut sheet
-- [x] Application E2E test (tauri-driver/WebDriver): 30/30 checks
+- [x] Application E2E test (tauri-driver/WebDriver): 32/32 checks (incl. drag & drop of templates and transitions)
 
 ## Known bugs / limitations
 

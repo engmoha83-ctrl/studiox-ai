@@ -210,7 +210,9 @@ async fn start_export(app: AppHandle, state: State<'_, AppState>, req: ExportReq
     let script = job_dir.join("graph.txt");
     std::fs::write(&script, &req.filter_graph)?;
     let tmp = PathBuf::from(format!("{}.part", req.output_path));
-    let mut args: Vec<String> = vec!["-hide_banner".into(), "-y".into()];
+    let threads = std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4);
+    // Filter graphs run single-threaded by default; use every core for compositing.
+    let mut args: Vec<String> = vec!["-hide_banner".into(), "-y".into(), "-filter_complex_threads".into(), threads.to_string()];
     args.extend(req.input_args);
     if ff.info.major >= 7 {
         args.push("-/filter_complex".into());
