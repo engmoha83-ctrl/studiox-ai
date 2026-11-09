@@ -2,7 +2,9 @@
 // Pure function — unit tested in tests/exportGraph.test.ts and executed with a
 // real FFmpeg in scripts/e2e-export.mjs.
 
-import { isMediaClip, isTextClip, type Project } from "../types/project";
+import { isMediaClip, isTextClip, type MediaClip, type Project } from "../types/project";
+import { hasKf, kfExpr } from "./keyframes";
+import { isColorIdentity } from "./color";
 import { audioSegments, mediaRect, videoLayers, type LayerAnim, type RenderLayer } from "./segments";
 import { codecFamily, type ExportSettings } from "./presets";
 import { projectDuration } from "./timelineOps";
@@ -38,6 +40,38 @@ export function textLayersFor(p: Project): string[] {
 
 export const textFileName = (clipId: string) => `text_${clipId}.png`;
 
+/** Extra per-clip files produced before export (see services/exporter). */
+export interface ClipAssets {
+  lut?: string; // .cube
+  vignette?: string; // png at layer pixel size
+  mask?: string; // png at layer pixel size (alpha = mask)
+}
+
+/** Escape a file path for use inside a filtergraph option value. */
+export function ffPath(path: string): string {
+  return `'${path.replace(/\\/g, "/").replace(/:/g, "\\:").replace(/'/g, "'\\''")}'`;
+}
+
+const PAD = 2;
+
+/** Pixel size the media layer is rendered at before positioning (shared with asset rendering). */
+export function layerPixelSize(_p: Project, clip: MediaClip, srcW: number, srcH: number, CW: number, CH: number, unit: number) {
+  const kfScale = clip.keyframes?.scale?.length ? Math.max(clip.transform.scale, ...clip.keyframes.scale.map((k) => k.v)) : clip.transform.scale;
+  const r = mediaRect(srcW, srcH, clip, CW, CH, unit, { x: 0, y: 0, scale: Math.min(kfScale, 8) });
+  return { w: Math.max(2, Math.round(r.w)), h: Math.max(2, Math.round(r.h)), maxScale: Math.min(kfScale, 8), rect: r };
+}
+
+/** Does the clip animate its geometry with keyframes? */
+const geomKf = (c: MediaClip) => hasKf(c, "x") || hasKf(c, "y") || hasKf(c, "scale") || hasKf(c, "rotation");
+
+export function needsAssets(c: MediaClip) {
+  return {
+    lut: !isColorIdentity(c.color),
+    vignette: !!c.effects?.some((e) => e.enabled && e.type === "vignette" && e.amount > 0),
+    mask: !!c.mask,
+  };
+}
+
 function escapeColor(c: string) {
   return c.startsWith("#") ? `0x${c.slice(1)}` : c;
 }
@@ -62,17 +96,33 @@ function scaleAnim(anim: LayerAnim, unit: number): LayerAnim {
 function needsAlpha(layer: RenderLayer): boolean {
   const c = layer.clip;
   const rot = c.type === "media" ? ((c.transform.rotation % 360) + 360) % 360 : 0;
-  return c.opacity < 0.999 || !!layer.anim.fadeIn || !!layer.anim.fadeOut || rot !== 0;
+  const media = c.type === "media" && (!!c.chromaKey?.enabled || !!c.mask || hasKf(c) || !!c.effects?.some((e) => e.enabled && e.type === "vignette"));
+  return c.opacity < 0.999 || !!layer.anim.fadeIn || !!layer.anim.fadeOut || rot !== 0 || media;
 }
 
 function alphaFilters(layer: RenderLayer, rgba: boolean): string[] {
   const out: string[] = [];
   const op = layer.clip.opacity;
-  // planar YUV+alpha is much cheaper than RGBA for video layers; text PNGs stay RGBA
-  if (op < 0.999) out.push(rgba ? `colorchannelmixer=aa=${f(Math.max(0, op), 4)}` : `lutyuv=a=val*${f(Math.max(0, op), 4)}`);
+  const opKf = layer.clip.type === "media" ? layer.clip.keyframes?.opacity : undefined;
+  if (opKf?.length) {
+    // per-frame opacity (T = clip-local time at this point of the chain)
+    out.push(`geq=lum='lum(X,Y)':cb='cb(X,Y)':cr='cr(X,Y)':a='alpha(X,Y)*clip(${kfExpr(opKf, op, "T")},0,1)'`);
+  } else if (op < 0.999) {
+    // planar YUV+alpha is much cheaper than RGBA for video layers; text PNGs stay RGBA
+    out.push(rgba ? `colorchannelmixer=aa=${f(Math.max(0, op), 4)}` : `lutyuv=a=val*${f(Math.max(0, op), 4)}`);
+  }
   const ws = layer.windowStart;
   if (layer.anim.fadeIn) out.push(`fade=t=in:st=${f(layer.anim.fadeIn.start - ws)}:d=${f(layer.anim.fadeIn.dur)}:alpha=1`);
   if (layer.anim.fadeOut) out.push(`fade=t=out:st=${f(layer.anim.fadeOut.start - ws)}:d=${f(layer.anim.fadeOut.dur)}:alpha=1`);
+  return out;
+}
+
+function masterFx(p: Project): string {
+  const m = p.master;
+  if (!m) return "";
+  let out = "";
+  if (Math.abs(m.volume - 1) > 1e-4) out += `,volume=${f(m.volume, 4)}`;
+  if (m.limiter) out += ",alimiter=limit=0.95:level=disabled";
   return out;
 }
 
@@ -183,7 +233,7 @@ function audioCodecArgs(s: ExportSettings): string[] {
  * Build an export plan. `textPaths` maps text clip id → rasterised PNG path
  * (produced by textRender.textClipToPng at composition size).
  */
-export function buildExport(p: Project, s: ExportSettings, textPaths: Record<string, string>): ExportPlan {
+export function buildExport(p: Project, s: ExportSettings, textPaths: Record<string, string>, assets: Record<string, ClipAssets> = {}): ExportPlan {
   const { unit, w: CW, h: CH } = compositionSize(p, s);
   const fps = s.fps;
   const total = Math.max(1 / fps, projectDuration(p));
@@ -224,18 +274,78 @@ export function buildExport(p: Project, s: ExportSettings, textPaths: Record<str
         clipInput[clip.id] = idx;
         parts.push(`[${idx}:v]setpts=(PTS-STARTPTS)/${f(clip.speed)}`, `fps=${f(fps)}`, `tpad=stop_mode=clone:stop_duration=${f(L)}`, `trim=duration=${f(L)}`, `setpts=PTS-STARTPTS`);
       }
+      const size = layerPixelSize(p, clip, m.width, m.height, CW, CH, unit);
       const r = mediaRect(m.width, m.height, clip, CW, CH, unit);
       const c = clip.crop;
+      const a = assets[clip.id] ?? {};
+      const alpha = needsAlpha(layer);
       if (c.left || c.top || c.right || c.bottom) parts.push(`crop=${Math.round(r.sw)}:${Math.round(r.sh)}:${Math.round(r.sx)}:${Math.round(r.sy)}`);
-      parts.push(`scale=${Math.max(1, Math.round(r.w))}:${Math.max(1, Math.round(r.h))}:flags=bicubic`, needsAlpha(layer) ? "format=yuva420p" : "format=yuv420p");
+      parts.push(`scale=${size.w}:${size.h}:flags=bicubic`);
+      if (a.lut) parts.push(`lut3d=file=${ffPath(a.lut)}:interp=trilinear`);
+      parts.push(alpha ? "format=yuva420p" : "format=yuv420p");
+      const ck = clip.chromaKey;
+      if (ck?.enabled) parts.push(`chromakey=${escapeColor(ck.color)}:${f(Math.max(0.01, ck.similarity), 4)}:${f(Math.max(0, ck.blend), 4)}`);
+      for (const e of clip.effects ?? []) {
+        if (!e.enabled || e.amount <= 0) continue;
+        if (e.type === "blur") parts.push(`gblur=sigma=${f(Math.max(0.1, e.amount * 30 * unit), 3)}`);
+        if (e.type === "sharpen") parts.push(`unsharp=5:5:${f(e.amount * 2, 3)}:5:5:0`);
+        if (e.type === "grain") parts.push(`noise=c0s=${Math.round(e.amount * 45)}:c0f=t+u`);
+        if (e.type === "letterbox") {
+          const bar = `ih*${f(Math.min(0.45, e.amount * 0.5), 4)}`;
+          parts.push(`drawbox=x=0:y=0:w=iw:h='${bar}':color=black@1:t=fill`, `drawbox=x=0:y='ih-${bar}':w=iw:h='${bar}':color=black@1:t=fill`);
+        }
+      }
+      // inputs that must be composited onto the layer (vignette, mask) split the chain
+      const flush = (label: string) => {
+        chains.push(`${parts.join(",")}[${label}]`);
+        parts.length = 0;
+      };
+      if (a.vignette) {
+        const vi = addInput(["-loop", "1", "-framerate", f(fps), "-t", f(L + 1 / fps), "-i", a.vignette]);
+        flush(`pv${layerIdx}`);
+        chains.push(`[${vi}:v]format=yuva420p,trim=duration=${f(L)},setpts=PTS-STARTPTS[vg${layerIdx}]`);
+        parts.push(`[pv${layerIdx}][vg${layerIdx}]overlay=0:0:format=auto:alpha=straight`, "format=yuva420p");
+      }
+      if (a.mask) {
+        const mi = addInput(["-loop", "1", "-framerate", f(fps), "-t", f(L + 1 / fps), "-i", a.mask]);
+        flush(`pm${layerIdx}`);
+        chains.push(`[${mi}:v]format=yuva420p,trim=duration=${f(L)},setpts=PTS-STARTPTS[mk${layerIdx}]`);
+        parts.push(`[pm${layerIdx}][mk${layerIdx}]blend=c0_mode=normal:c1_mode=normal:c2_mode=normal:c3_mode=multiply`);
+      }
       if (clip.transform.flipH) parts.push("hflip");
       if (clip.transform.flipV) parts.push("vflip");
-      const rot = ((clip.transform.rotation % 360) + 360) % 360;
-      if (rot) {
-        const rad = f((rot * Math.PI) / 180, 8);
-        parts.push(`rotate=${rad}:ow=rotw(${rad}):oh=roth(${rad}):c=none`);
+      if (geomKf(clip)) {
+        // animated position/scale/rotation: pad into a transparent frame and map its corners per frame
+        const PW = Math.max(CW, size.w + 2 * PAD);
+        const PH = Math.max(CH, size.h + 2 * PAD);
+        const tv = `(in/${f(fps)})`;
+        const kf = clip.keyframes!;
+        const K = `((${kfExpr(kf.scale, clip.transform.scale, tv)})/${f(size.maxScale)})`;
+        const R = `((${kfExpr(kf.rotation, clip.transform.rotation, tv)})*PI/180)`;
+        const CX = `(${f(CW / 2)}+(${kfExpr(kf.x, clip.transform.x, tv)})*${f(unit)})`;
+        const CY = `(${f(CH / 2)}+(${kfExpr(kf.y, clip.transform.y, tv)})*${f(unit)})`;
+        const ox = PAD + size.w / 2;
+        const oy = PAD + size.h / 2;
+        const corner = (px: number, py: number) => {
+          const dx = `(${K}*${f(px - ox)})`;
+          const dy = `(${K}*${f(py - oy)})`;
+          return [`${CX}+${dx}*cos(${R})-${dy}*sin(${R})`, `${CY}+${dx}*sin(${R})+${dy}*cos(${R})`];
+        };
+        const [x0, y0] = corner(0, 0);
+        const [x1, y1] = corner(PW, 0);
+        const [x2, y2] = corner(0, PH);
+        const [x3, y3] = corner(PW, PH);
+        parts.push(`pad=${PW}:${PH}:${PAD}:${PAD}:color=black@0`);
+        parts.push(`perspective=x0='${x0}':y0='${y0}':x1='${x1}':y1='${y1}':x2='${x2}':y2='${y2}':x3='${x3}':y3='${y3}':sense=destination:eval=frame:interpolation=linear`);
+        geometry = { x: "0", y: "0" };
+      } else {
+        const rot = ((clip.transform.rotation % 360) + 360) % 360;
+        if (rot) {
+          const rad = f((rot * Math.PI) / 180, 8);
+          parts.push(`rotate=${rad}:ow=rotw(${rad}):oh=roth(${rad}):c=none`);
+        }
+        geometry = { x: `${f(r.cx, 3)}-overlay_w/2`, y: `${f(r.cy, 3)}-overlay_h/2` };
       }
-      geometry = { x: `${f(r.cx, 3)}-overlay_w/2`, y: `${f(r.cy, 3)}-overlay_h/2` };
     } else continue;
     parts.push(...alphaFilters(layer, isTextClip(clip)));
     parts.push(`setpts=PTS+${f(layer.windowStart)}/TB[l${layerIdx}]`);
@@ -270,7 +380,19 @@ export function buildExport(p: Project, s: ExportSettings, textPaths: Record<str
       const a: string[] = [`[${idx}:a]asetpts=PTS-STARTPTS`, `aformat=sample_fmts=fltp:sample_rates=${s.sampleRate}:channel_layouts=stereo`];
       a.push(...atempoChain(seg.speed));
       a.push(`atrim=duration=${f(seg.duration)}`, `asetpts=PTS-STARTPTS`);
-      if (Math.abs(seg.gain - 1) > 1e-4) a.push(`volume=${f(seg.gain, 4)}`);
+      const fx = seg.clip.audioFx;
+      if (fx) {
+        if (fx.noiseReduction > 0) a.push(`afftdn=nr=${f(6 + fx.noiseReduction * 30, 2)}:nf=-45`);
+        if (fx.eqLow) a.push(`equalizer=f=100:t=q:w=0.7:g=${f(fx.eqLow, 2)}`);
+        if (fx.eqMid) a.push(`equalizer=f=1000:t=q:w=1:g=${f(fx.eqMid, 2)}`);
+        if (fx.eqHigh) a.push(`equalizer=f=8000:t=q:w=0.7:g=${f(fx.eqHigh, 2)}`);
+        if (fx.compressor > 0)
+          a.push(`acompressor=threshold=${f(Math.pow(10, (-8 - 22 * fx.compressor) / 20), 5)}:ratio=${f(1 + 7 * fx.compressor, 2)}:attack=10:release=200:makeup=${f(1 + 2 * fx.compressor, 2)}`);
+      }
+      const volKf = seg.clip.keyframes?.volume;
+      const trackGain = seg.clip.volume > 0 ? seg.gain / seg.clip.volume : 0;
+      if (volKf?.length) a.push(`volume='(${kfExpr(volKf, seg.clip.volume, "t")})*${f(trackGain, 4)}':eval=frame`);
+      else if (Math.abs(seg.gain - 1) > 1e-4) a.push(`volume=${f(seg.gain, 4)}`);
       if (seg.fadeIn > 0) a.push(`afade=t=in:st=0:d=${f(seg.fadeIn)}`);
       if (seg.fadeOut > 0) a.push(`afade=t=out:st=${f(seg.duration - seg.fadeOut)}:d=${f(seg.fadeOut)}`);
       const ms = Math.round(seg.start * 1000);
@@ -280,7 +402,7 @@ export function buildExport(p: Project, s: ExportSettings, textPaths: Record<str
     });
     if (labels.length) {
       chains.push(
-        `${labels.join("")}amix=inputs=${labels.length}:duration=longest:dropout_transition=0:normalize=0,apad=whole_dur=${f(total)},atrim=duration=${f(total)}[aout]`,
+        `${labels.join("")}amix=inputs=${labels.length}:duration=longest:dropout_transition=0:normalize=0,apad=whole_dur=${f(total)},atrim=duration=${f(total)}${masterFx(p)}[aout]`,
       );
     } else {
       chains.push(`anullsrc=r=${s.sampleRate}:cl=stereo,atrim=duration=${f(total)}[aout]`);

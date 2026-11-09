@@ -46,6 +46,8 @@ export interface Track {
   locked: boolean;
   hidden: boolean;
   muted: boolean;
+  /** solo: when any track is soloed, only soloed audio is heard */
+  solo?: boolean;
   /** linear gain 0..2 */
   volume: number;
 }
@@ -89,6 +91,79 @@ interface ClipBase {
   transitionOut?: Transition | null;
 }
 
+// ------------------------------------------------------------------ Milestone 4
+
+export type Easing = "linear" | "ease-in" | "ease-out" | "ease-in-out" | "hold";
+export interface Keyframe {
+  /** clip-local time, seconds */
+  t: number;
+  v: number;
+  ease: Easing;
+}
+export type KfProp = "x" | "y" | "scale" | "rotation" | "opacity" | "volume";
+export type Keyframes = Partial<Record<KfProp, Keyframe[]>>;
+
+export interface CurvePoint {
+  x: number;
+  y: number;
+}
+export interface ColorParams {
+  exposure: number; // stops, -3..3
+  contrast: number; // -1..1
+  highlights: number; // -1..1
+  shadows: number;
+  whites: number;
+  blacks: number;
+  temperature: number; // -1 (cool) .. 1 (warm)
+  tint: number; // -1 (green) .. 1 (magenta)
+  saturation: number; // -1..1
+  vibrance: number; // -1..1
+  hue: number; // degrees -180..180
+  /** colour wheels: per-channel offsets -1..1 */
+  lift: [number, number, number];
+  gamma: [number, number, number];
+  gain: [number, number, number];
+  /** curves: monotone points in 0..1 (empty/identity = off) */
+  curves: { master: CurvePoint[]; r: CurvePoint[]; g: CurvePoint[]; b: CurvePoint[] };
+  /** imported .cube LUT */
+  lutPath?: string | null;
+  lutIntensity: number; // 0..1
+}
+
+export interface ChromaKey {
+  enabled: boolean;
+  color: string;
+  similarity: number; // 0.01..0.6
+  blend: number; // 0..0.5
+}
+
+export type EffectType = "blur" | "sharpen" | "vignette" | "grain" | "letterbox";
+export interface Effect {
+  id: string;
+  type: EffectType;
+  enabled: boolean;
+  amount: number; // 0..1 (letterbox: bar height fraction)
+}
+
+export interface Mask {
+  shape: "rectangle" | "ellipse";
+  /** centre and size as fractions of the clip frame */
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  feather: number; // 0..0.5 of the smaller side
+  invert: boolean;
+}
+
+export interface AudioFx {
+  eqLow: number; // dB -12..12 @100 Hz
+  eqMid: number; // @1 kHz
+  eqHigh: number; // @8 kHz
+  compressor: number; // 0 (off) .. 1
+  noiseReduction: number; // 0 (off) .. 1
+}
+
 export interface MediaClip extends ClipBase {
   type: "media";
   mediaId: string;
@@ -102,8 +177,14 @@ export interface MediaClip extends ClipBase {
   crop: Crop;
   audioFadeIn: number;
   audioFadeOut: number;
-  /** reverse playback (Milestone 4) */
+  /** reverse playback (reserved) */
   reverse?: boolean;
+  color?: ColorParams | null;
+  chromaKey?: ChromaKey | null;
+  effects?: Effect[];
+  mask?: Mask | null;
+  keyframes?: Keyframes;
+  audioFx?: AudioFx | null;
 }
 
 export type TextAnimation = "none" | "fade" | "slide-up" | "slide-down" | "pop" | "typewriter";
@@ -164,6 +245,8 @@ export interface Project {
   name: string;
   createdAt: number;
   settings: ProjectSettings;
+  /** master bus: output limiter */
+  master?: { volume: number; limiter: boolean };
   media: MediaAsset[];
   mediaFolders: MediaFolder[];
   tracks: Track[];

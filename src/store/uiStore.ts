@@ -18,6 +18,8 @@ interface UiStore {
   leftTab: LeftTab;
   clipboard: Clip[];
   previewFullscreen: boolean;
+  /** before/after: preview without colour & effects */
+  compareOriginal: boolean;
   setPlayhead: (t: number) => void;
   setPlaying: (p: boolean) => void;
   setZoom: (z: number) => void;
@@ -43,6 +45,7 @@ export const useUi = create<UiStore>((set) => ({
   leftTab: "media",
   clipboard: [],
   previewFullscreen: false,
+  compareOriginal: false,
   setPlayhead: (t) => set({ playhead: Math.max(0, t) }),
   setPlaying: (playing) => set({ playing }),
   setZoom: (z) => set({ zoom: Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z)) }),

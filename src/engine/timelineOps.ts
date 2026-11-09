@@ -58,7 +58,10 @@ export function maxStartExtension(p: Project, c: Clip): number {
 }
 
 function shiftIn(c: Clip, deltaTimeline: number) {
-  if (isMediaClip(c)) c.in = Math.max(0, c.in + deltaTimeline * c.speed);
+  if (!isMediaClip(c)) return;
+  c.in = Math.max(0, c.in + deltaTimeline * c.speed);
+  // keyframes are clip-local: keep them attached to the same source moment
+  if (c.keyframes) for (const list of Object.values(c.keyframes)) if (list) for (const k of list) k.t -= deltaTimeline;
 }
 
 /**

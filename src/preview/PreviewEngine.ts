@@ -2,12 +2,16 @@
 // (HTMLVideoElement / HTMLAudioElement / HTMLImageElement used only as frame/sample
 // sources); every frame is composited on a canvas from the shared render resolver.
 
-import { fileUrl } from "../backend/api";
+import { api, fileUrl } from "../backend/api";
+import { buildLut, isColorIdentity, parseCube, type Lut3D } from "../engine/color";
+import { evalKf } from "../engine/keyframes";
+import { drawLetterbox, drawMask, drawVignette } from "../engine/layerFx";
+import { GlFilter } from "./GlFilter";
 import { audioSegments, evalLayer, layersAt, mediaRect, videoLayers, type AudioSegment, type RenderLayer } from "../engine/segments";
 import { drawTextClip } from "../engine/textRender";
 import { projectDuration } from "../engine/timelineOps";
 import { previewPath } from "../services/media";
-import { isMediaClip, isTextClip, type MediaAsset, type Project } from "../types/project";
+import { isMediaClip, isTextClip, type MediaAsset, type MediaClip, type Project } from "../types/project";
 
 const LOOKAHEAD = 1.5;
 const EVICT_DISTANCE = 12;
@@ -35,6 +39,15 @@ export class PreviewEngine {
   private quality = 1;
   time = 0;
   playing = false;
+  /** before/after comparison: draw without colour & effects */
+  bypassFx = false;
+  private gl?: GlFilter;
+  private luts = new Map<string, { key: string; lut: Lut3D }>();
+  private userLuts = new Map<string, Lut3D | "loading" | "error">();
+  private off = document.createElement("canvas");
+  private maskCanvas = document.createElement("canvas");
+  private maskKey = "";
+  private grain = document.createElement("canvas");
   rate = 1;
   onTime?: (t: number) => void;
   onStop?: () => void;
@@ -193,7 +206,8 @@ export class PreviewEngine {
 
   private gainAt(seg: AudioSegment, t: number): number {
     if (t < seg.start || t >= seg.start + seg.duration) return 0;
-    let g = seg.gain;
+    const trackGain = seg.clip.volume > 0 ? seg.gain / seg.clip.volume : 1;
+    let g = evalKf(seg.clip.keyframes?.volume, t - seg.start, seg.clip.volume) * trackGain * (this.project?.master?.volume ?? 1);
     if (seg.fadeIn > 0) g *= Math.min(1, (t - seg.start) / seg.fadeIn);
     if (seg.fadeOut > 0) g *= Math.min(1, (seg.start + seg.duration - t) / seg.fadeOut);
     return Math.max(0, Math.min(1, g));
@@ -315,7 +329,7 @@ export class PreviewEngine {
       }
       if (!isMediaClip(c) || !layer.media) continue;
       const m = layer.media;
-      const r = mediaRect(m.width || 16, m.height || 9, c, W, H, unit);
+      const r = mediaRect(m.width || 16, m.height || 9, c, W, H, unit, { x: st.x, y: st.y, scale: st.scale });
       let src: CanvasImageSource | null = null;
       let sw = 0;
       let sh = 0;
@@ -338,12 +352,14 @@ export class PreviewEngine {
       ctx.save();
       ctx.globalAlpha = st.alpha;
       ctx.translate(r.cx + st.dx * unit, r.cy + st.dy * unit);
-      ctx.rotate((c.transform.rotation * Math.PI) / 180);
+      ctx.rotate((st.rotation * Math.PI) / 180);
       ctx.scale(c.transform.flipH ? -1 : 1, c.transform.flipV ? -1 : 1);
       if (src) {
         const cr = c.crop;
         ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(src, sw * cr.left, sh * cr.top, sw * (1 - cr.left - cr.right), sh * (1 - cr.top - cr.bottom), -r.w / 2, -r.h / 2, r.w, r.h);
+        const processed = !this.bypassFx && this.hasFx(c) ? this.processLayer(c, src, sw, sh, r.w, r.h) : null;
+        if (processed) ctx.drawImage(processed, -r.w / 2, -r.h / 2, r.w, r.h);
+        else ctx.drawImage(src, sw * cr.left, sh * cr.top, sw * (1 - cr.left - cr.right), sh * (1 - cr.top - cr.bottom), -r.w / 2, -r.h / 2, r.w, r.h);
       } else {
         // decoder not ready, proxy pending or file missing
         ctx.fillStyle = m.missing ? "#3b0d12" : "#111827";
@@ -367,9 +383,111 @@ export class PreviewEngine {
     const layer = layersAt(this.layers, this.time).find((l) => l.clip.id === clipId);
     if (!layer || !isMediaClip(layer.clip) || !layer.media) return null;
     const unit = this.unit;
-    const r = mediaRect(layer.media.width || 16, layer.media.height || 9, layer.clip, this.canvas.width, this.canvas.height, unit);
     const st = evalLayer(layer, this.time);
-    return { cx: r.cx + st.dx * unit, cy: r.cy + st.dy * unit, w: r.w, h: r.h, rotation: layer.clip.transform.rotation };
+    const r = mediaRect(layer.media.width || 16, layer.media.height || 9, layer.clip, this.canvas.width, this.canvas.height, unit, { x: st.x, y: st.y, scale: st.scale });
+    return { cx: r.cx + st.dx * unit, cy: r.cy + st.dy * unit, w: r.w, h: r.h, rotation: st.rotation };
+  }
+
+  // ---------------------------------------------------------------- colour & effects
+
+  private hasFx(c: MediaClip): boolean {
+    return !isColorIdentity(c.color) || !!c.chromaKey?.enabled || !!c.mask || !!c.effects?.some((e) => e.enabled && e.amount > 0);
+  }
+
+  private userLut(path: string): Lut3D | null {
+    const v = this.userLuts.get(path);
+    if (v === undefined) {
+      this.userLuts.set(path, "loading");
+      api
+        .readTextFile(path)
+        .then((txt) => this.userLuts.set(path, parseCube(txt)))
+        .catch(() => this.userLuts.set(path, "error"))
+        .finally(() => this.requestRender());
+      return null;
+    }
+    return typeof v === "string" ? null : v;
+  }
+
+  private lutFor(c: MediaClip): { key: string; lut: Lut3D } | null {
+    if (isColorIdentity(c.color)) return null;
+    const user = c.color!.lutPath ? this.userLut(c.color!.lutPath) : null;
+    const key = JSON.stringify(c.color) + (user ? ":u" : "");
+    let e = this.luts.get(c.id);
+    if (!e || e.key !== key) {
+      e = { key, lut: buildLut(c.color!, user) };
+      this.luts.set(c.id, e);
+    }
+    return e;
+  }
+
+  private processLayer(c: MediaClip, src: CanvasImageSource, sw: number, sh: number, w: number, h: number): HTMLCanvasElement | null {
+    const W = Math.max(1, Math.min(4096, Math.round(w)));
+    const H = Math.max(1, Math.min(4096, Math.round(h)));
+    const cr = c.crop;
+    const crop = { x: sw * cr.left, y: sh * cr.top, w: sw * (1 - cr.left - cr.right), h: sh * (1 - cr.top - cr.bottom) };
+    const fx = (t: string) => c.effects?.find((e) => e.enabled && e.type === t && e.amount > 0)?.amount ?? 0;
+    const lut = this.lutFor(c);
+    const key = c.chromaKey?.enabled ? c.chromaKey : null;
+    const sharpen = fx("sharpen") * 1.5;
+    let base: CanvasImageSource | null = null;
+    if (lut || key || sharpen) {
+      this.gl ??= new GlFilter();
+      base = this.gl.process(src as TexImageSource, sw, sh, crop, W, H, { lut, key, sharpen });
+    }
+    if (this.off.width !== W || this.off.height !== H) {
+      this.off.width = W;
+      this.off.height = H;
+    }
+    const ctx = this.off.getContext("2d")!;
+    ctx.save();
+    ctx.clearRect(0, 0, W, H);
+    const blur = fx("blur");
+    if (blur && "filter" in ctx) ctx.filter = `blur(${blur * 30 * this.unit}px)`;
+    if (base) ctx.drawImage(base, 0, 0, W, H);
+    else ctx.drawImage(src, crop.x, crop.y, crop.w, crop.h, 0, 0, W, H);
+    ctx.filter = "none";
+    const lb = fx("letterbox");
+    if (lb) drawLetterbox(ctx, W, H, lb);
+    const grain = fx("grain");
+    if (grain) {
+      if (this.grain.width !== 128) {
+        this.grain.width = 128;
+        this.grain.height = 128;
+      }
+      const g = this.grain.getContext("2d")!;
+      const img = g.createImageData(128, 128);
+      for (let i = 0; i < img.data.length; i += 4) {
+        const v = Math.random() * 255;
+        img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+        img.data[i + 3] = 255;
+      }
+      g.putImageData(img, 0, 0);
+      ctx.globalCompositeOperation = "source-atop";
+      ctx.globalAlpha = grain * 0.35;
+      ctx.fillStyle = ctx.createPattern(this.grain, "repeat")!;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalAlpha = 1;
+      ctx.globalCompositeOperation = "source-over";
+    }
+    const vig = fx("vignette");
+    if (vig) {
+      ctx.globalCompositeOperation = "source-atop";
+      drawVignette(ctx, W, H, vig);
+      ctx.globalCompositeOperation = "source-over";
+    }
+    if (c.mask) {
+      const mk = `${W}x${H}:${JSON.stringify(c.mask)}`;
+      if (mk !== this.maskKey) {
+        this.maskCanvas.width = W;
+        this.maskCanvas.height = H;
+        drawMask(this.maskCanvas.getContext("2d")!, W, H, c.mask);
+        this.maskKey = mk;
+      }
+      ctx.globalCompositeOperation = "destination-in";
+      ctx.drawImage(this.maskCanvas, 0, 0);
+    }
+    ctx.restore();
+    return this.off;
   }
 
   private scratch?: CanvasRenderingContext2D;

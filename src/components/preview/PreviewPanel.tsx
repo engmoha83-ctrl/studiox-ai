@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ChevronFirst, ChevronLast, Grid3x3, Maximize, Minimize, Pause, Play, StepBack, StepForward } from "lucide-react";
+import { ChevronFirst, ChevronLast, Columns2, Grid3x3, Maximize, Minimize, Pause, Play, StepBack, StepForward } from "lucide-react";
 import { PreviewEngine } from "../../preview/PreviewEngine";
 import { attachEngine, player } from "../../preview/player";
 import { projectDuration } from "../../engine/timelineOps";
@@ -149,6 +149,7 @@ export default function PreviewPanel() {
   const rate = useUi((s) => s.playbackRate);
   const safe = useUi((s) => s.safeArea);
   const fullscreen = useUi((s) => s.previewFullscreen);
+  const compare = useUi((s) => s.compareOriginal);
   const set = useUi((s) => s.set);
 
   useEffect(() => {
@@ -165,6 +166,11 @@ export default function PreviewPanel() {
     };
   }, []);
   useEffect(() => engine?.setQuality(quality), [engine, quality]);
+  useEffect(() => {
+    if (!engine) return;
+    engine.bypassFx = compare;
+    engine.requestRender();
+  }, [engine, compare]);
 
   // fit the canvas into the available area keeping the project aspect ratio
   useLayoutEffect(() => {
@@ -227,6 +233,9 @@ export default function PreviewPanel() {
             }))}
           />
         </div>
+        <IconBtn tip={t("Before / after (hide colour & effects)")} active={compare} onClick={() => set({ compareOriginal: !compare })}>
+          <Columns2 size={15} />
+        </IconBtn>
         <IconBtn tip={t("Safe areas")} active={safe} onClick={() => set({ safeArea: !safe })}>
           <Grid3x3 size={15} />
         </IconBtn>

@@ -4,6 +4,7 @@
 
 import { isMediaClip, isTextClip, type Clip, type MediaAsset, type Project, type TextAnimation, type Track, type Transition } from "../types/project";
 import { clipEnd, mediaOf, previousAdjacent } from "./timelineOps";
+import { evalKf } from "./keyframes";
 
 export interface Curve {
   start: number; // timeline seconds
@@ -109,13 +110,14 @@ export function videoLayers(p: Project, canvasW = p.settings.width, canvasH = p.
 
 export function audioSegments(p: Project): AudioSegment[] {
   const out: AudioSegment[] = [];
+  const anySolo = p.tracks.some((t) => t.solo);
   for (const c of Object.values(p.clips)) {
     if (!isMediaClip(c) || c.muted) continue;
     const track = p.tracks.find((t) => t.id === c.trackId);
     const m = mediaOf(p, c);
-    if (!track || track.muted || !m || !m.hasAudio || m.kind === "image") continue;
+    if (!track || track.muted || (anySolo && !track.solo) || !m || !m.hasAudio || m.kind === "image") continue;
     const gain = c.volume * track.volume;
-    if (gain <= 0) continue;
+    if (gain <= 0 && !c.keyframes?.volume?.length) continue;
     out.push({
       clip: c,
       media: m,
@@ -142,11 +144,18 @@ export interface LayerState {
   dy: number;
   /** source media time for video layers */
   sourceTime: number;
+  /** effective (keyframed) transform for media layers */
+  x: number;
+  y: number;
+  scale: number;
+  rotation: number;
 }
 
 export function evalLayer(layer: RenderLayer, t: number): LayerState {
   const { clip, anim } = layer;
-  let alpha = clip.type === "text" ? clip.opacity : clip.opacity;
+  const local = t - clip.start;
+  const kf = isMediaClip(clip) ? clip.keyframes : undefined;
+  let alpha = evalKf(kf?.opacity, local, clip.opacity);
   let dx = 0;
   let dy = 0;
   if (anim.fadeIn) alpha *= prog(t, anim.fadeIn);
@@ -162,11 +171,16 @@ export function evalLayer(layer: RenderLayer, t: number): LayerState {
     dy += anim.slideOut.dy * k;
   }
   let sourceTime = 0;
+  let x = 0, y = 0, scale = 1, rotation = 0;
   if (isMediaClip(clip)) {
     sourceTime = clip.in + (t - clip.start) * clip.speed;
     if (layer.media && layer.media.kind === "video") sourceTime = Math.min(sourceTime, Math.max(0, layer.media.duration - 0.001));
+    x = evalKf(kf?.x, local, clip.transform.x);
+    y = evalKf(kf?.y, local, clip.transform.y);
+    scale = evalKf(kf?.scale, local, clip.transform.scale);
+    rotation = evalKf(kf?.rotation, local, clip.transform.rotation);
   }
-  return { alpha, dx, dy, sourceTime };
+  return { alpha: Math.max(0, Math.min(1, alpha)), dx, dy, sourceTime, x, y, scale, rotation };
 }
 
 export function layersAt(layers: RenderLayer[], t: number): RenderLayer[] {
@@ -189,14 +203,15 @@ export interface Rect {
   sh: number;
 }
 
-/** Fit (contain) the cropped source into the canvas, then apply the clip transform. */
-export function mediaRect(srcW: number, srcH: number, clip: Clip & { type: "media" }, W: number, H: number, unit = 1): Rect {
+/** Fit (contain) the cropped source into the canvas, then apply the clip transform (optionally keyframed). */
+export function mediaRect(srcW: number, srcH: number, clip: Clip & { type: "media" }, W: number, H: number, unit = 1, tf?: { x: number; y: number; scale: number }): Rect {
   const cr = clip.crop;
   const sx = srcW * cr.left;
   const sy = srcH * cr.top;
   const sw = Math.max(1, srcW * (1 - cr.left - cr.right));
   const sh = Math.max(1, srcH * (1 - cr.top - cr.bottom));
   const fit = Math.min(W / sw, H / sh);
-  const s = fit * clip.transform.scale;
-  return { cx: W / 2 + clip.transform.x * unit, cy: H / 2 + clip.transform.y * unit, w: sw * s, h: sh * s, sx, sy, sw, sh };
+  const t = tf ?? clip.transform;
+  const s = fit * t.scale;
+  return { cx: W / 2 + t.x * unit, cy: H / 2 + t.y * unit, w: sw * s, h: sh * s, sx, sy, sw, sh };
 }

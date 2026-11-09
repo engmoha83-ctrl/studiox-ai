@@ -12,6 +12,7 @@ import { addMediaToTimeline, deleteSelection, detachAudioSelected, setSpeed } fr
 import { createProxy, proxyProgress } from "../../services/media";
 import { isMediaClip, isTextClip, type Clip, type MediaClip, type Project, type TextAnimation, type TextClip, type Transition } from "../../types/project";
 import { Button, IconBtn, NumberField, Row, Section, Select, Slider, Toggle, cx } from "../common/ui";
+import { AudioFxSection, ColorPanel, EasingRow, EffectsPanel, KfButton, propValue, setProp, useLocalTime } from "./M4Panels";
 
 type Recipe<T> = (c: T) => void;
 
@@ -64,8 +65,14 @@ function MediaClipInspector({ clip, project }: { clip: MediaClip; project: Proje
   const audible = !!media?.hasAudio && media.kind !== "image";
   const [tab, setTab] = useState(visual ? "video" : "audio");
   const cur = !visual && tab === "video" ? "audio" : !audible && tab === "audio" ? "video" : tab;
-  const tabs = [...(visual ? [{ id: "video", label: t("Video") }] : []), ...(audible ? [{ id: "audio", label: t("Audio") }] : []), ...(media?.kind !== "image" ? [{ id: "speed", label: t("Speed") }] : [])];
+  const tabs = [
+    ...(visual ? [{ id: "video", label: t("Video") }, { id: "color", label: t("Colour") }, { id: "effects", label: t("Effects") }] : []),
+    ...(audible ? [{ id: "audio", label: t("Audio") }] : []),
+    ...(media?.kind !== "image" ? [{ id: "speed", label: t("Speed") }] : []),
+  ];
   const tr = clip.transform;
+  const local = useLocalTime(clip);
+  const pv = (p: "x" | "y" | "scale" | "rotation" | "opacity" | "volume") => propValue(clip, p, local);
   return (
     <>
       <Tabs tabs={tabs} value={cur} onChange={setTab} />
@@ -79,15 +86,21 @@ function MediaClipInspector({ clip, project }: { clip: MediaClip; project: Proje
               </IconBtn>
             }
           >
-            <Row label={t("Position")}>
-              <NumberField value={tr.x} onChange={(v) => edit(t("Position"), "x", (c) => void (c.transform.x = v))} suffix="X" precision={0} />
-              <NumberField value={tr.y} onChange={(v) => edit(t("Position"), "y", (c) => void (c.transform.y = v))} suffix="Y" precision={0} />
+            <Row label={t("Position X")}>
+              <NumberField value={pv("x")} onChange={(v) => setProp(clip, "x", v, t("Position"))} suffix="px" precision={0} />
+              <KfButton clip={clip} prop="x" />
+            </Row>
+            <Row label={t("Position Y")}>
+              <NumberField value={pv("y")} onChange={(v) => setProp(clip, "y", v, t("Position"))} suffix="px" precision={0} />
+              <KfButton clip={clip} prop="y" />
             </Row>
             <Row label={t("Scale")}>
-              <Slider value={tr.scale} min={0.05} max={4} step={0.01} display={(v) => v * 100} precision={0} suffix="%" onChange={(v) => edit(t("Scale"), "scale", (c) => void (c.transform.scale = v))} />
+              <Slider value={pv("scale")} min={0.05} max={4} step={0.01} display={(v) => v * 100} precision={0} suffix="%" onChange={(v) => setProp(clip, "scale", v, t("Scale"))} />
+              <KfButton clip={clip} prop="scale" />
             </Row>
             <Row label={t("Rotation")}>
-              <Slider value={tr.rotation} min={-180} max={180} step={1} precision={0} suffix="°" onChange={(v) => edit(t("Rotation"), "rot", (c) => void (c.transform.rotation = v))} />
+              <Slider value={pv("rotation")} min={-180} max={180} step={1} precision={0} suffix="°" onChange={(v) => setProp(clip, "rotation", v, t("Rotation"))} />
+              <KfButton clip={clip} prop="rotation" />
             </Row>
             <Row label={t("Flip")}>
               <IconBtn tip={t("Flip horizontal")} active={tr.flipH} onClick={() => edit(t("Flip"), "fh" + Date.now(), (c) => void (c.transform.flipH = !c.transform.flipH))}>
@@ -98,8 +111,11 @@ function MediaClipInspector({ clip, project }: { clip: MediaClip; project: Proje
               </IconBtn>
             </Row>
             <Row label={t("Opacity")}>
-              <Slider value={clip.opacity} min={0} max={1} step={0.01} display={(v) => v * 100} precision={0} suffix="%" onChange={(v) => edit(t("Opacity"), "op", (c) => void (c.opacity = v))} />
+              <Slider value={pv("opacity")} min={0} max={1} step={0.01} display={(v) => v * 100} precision={0} suffix="%" onChange={(v) => setProp(clip, "opacity", v, t("Opacity"))} />
+              <KfButton clip={clip} prop="opacity" />
             </Row>
+            <EasingRow clip={clip} />
+            <p className="text-[11px] leading-snug text-dim">{t("◆ adds a keyframe at the playhead; once a property has keyframes, editing it updates the keyframe at the playhead.")}</p>
           </Section>
           <Section title={t("Crop")}>
             {(["left", "right", "top", "bottom"] as const).map((k) => (
@@ -117,7 +133,8 @@ function MediaClipInspector({ clip, project }: { clip: MediaClip; project: Proje
       {cur === "audio" && (
         <Section title={t("Audio")}>
           <Row label={t("Volume")}>
-            <Slider value={clip.volume} min={0} max={2} step={0.01} display={(v) => v * 100} precision={0} suffix="%" onChange={(v) => edit(t("Volume"), "vol", (c) => void (c.volume = v))} />
+            <Slider value={pv("volume")} min={0} max={2} step={0.01} display={(v) => v * 100} precision={0} suffix="%" onChange={(v) => setProp(clip, "volume", v, t("Volume"))} />
+            <KfButton clip={clip} prop="volume" />
           </Row>
           {clip.volume > 1 && <p className="text-[11px] text-dim">{t("Gain above 100% is applied in the export; the preview plays at 100%.")}</p>}
           <Row label={t("Fade in")}>
@@ -137,6 +154,9 @@ function MediaClipInspector({ clip, project }: { clip: MediaClip; project: Proje
           )}
         </Section>
       )}
+      {cur === "audio" && <AudioFxSection clip={clip} />}
+      {cur === "color" && <ColorPanel clip={clip} />}
+      {cur === "effects" && <EffectsPanel clip={clip} />}
       {cur === "speed" && (
         <Section title={t("Speed")}>
           <Row label={t("Speed")}>
@@ -428,6 +448,12 @@ function ProjectInfo() {
         </Row>
         <Row label={t("Background")}>
           <input type="color" value={project.settings.background} onChange={(e) => commit(t("Background color"), (d) => void (d.settings.background = e.target.value), "bg")} />
+        </Row>
+        <Row label={t("Master volume")}>
+          <Slider value={project.master?.volume ?? 1} min={0} max={2} step={0.01} display={(v) => v * 100} precision={0} suffix="%" onChange={(v) => commit(t("Master volume"), (d) => void (d.master = { limiter: d.master?.limiter ?? false, volume: v }), "mvol")} />
+        </Row>
+        <Row label={t("Limiter")}>
+          <Toggle checked={!!project.master?.limiter} onChange={(v) => commit(t("Limiter"), (d) => void (d.master = { volume: d.master?.volume ?? 1, limiter: v }))} label={t("Prevent clipping")} />
         </Row>
         <Row label={t("Contents")}>
           <span className="text-muted">{t("{{m}} media · {{c}} clips · {{t}} tracks", { m: project.media.length, c: clips.length, t: project.tracks.length })}</span>

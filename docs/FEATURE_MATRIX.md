@@ -25,21 +25,29 @@
 | | Zoom, frame-accurate navigation, waveforms | ✅ |
 | | Copy / paste / duplicate, multi-selection | ✅ |
 | | Undo / redo | ✅ |
-| | Keyframes | ❌ (M4) |
+| | Keyframes (position, scale, rotation, opacity, volume; 5 easings) | ✅ |
 | Clip ops (§5) | Crop, rotate, flip, scale, position, opacity, PiP | ✅ |
 | | Speed (0.1–16×, pitch preserved) | ✅ |
-| | Reverse, freeze frame, anchor point, masking, chroma key | ❌ (M4) |
+| | Chroma key | ✅ |
+| | Masks (rectangle / ellipse, feather, invert) | ✅ |
+| | Reverse, freeze frame, anchor point | ❌ |
 | Transitions (§6) | Fade, dissolve, slide ×4 | ✅ |
 | | Wipe, zoom, blur, spin, glitch, light | ❌ |
-| Effects (§6) | Effects engine & library | ❌ (M4) |
+| Effects (§6) | Blur, sharpen, vignette, film grain, cinematic bars (preview + export) | ✅ |
+| | Glitch, light leaks, distortion, particles, saved effect chains | ❌ |
 | Audio (§7) | Volume, fades, mute, detach, waveform | ✅ |
-| | EQ, compressor, limiter, reverb, noise reduction, ducking, beat detection, recording | ❌ |
+| | Track volume / mute / solo, master volume + limiter | ✅ |
+| | EQ (3-band), compressor, noise reduction, volume automation (keyframes) | ✅ export · 🟡 not audible in preview |
+| | Reverb, echo, ducking, beat detection, recording | ❌ |
 | Text (§8) | Titles, lower thirds, templates, outline, shadow, background | ✅ |
 | | Arabic shaping, RTL, mixed text, Arabic-Indic digits, Arabic fonts, correct in export | ✅ (verified in rendered file) |
 | | Fade / slide animations | ✅ |
 | | Word-level / karaoke, gradients, custom font import | ❌ |
 | | SRT / VTT, automatic captions, translation | ❌ (M5) |
-| Colour (§9) | All colour tools, LUTs | ❌ (M4) |
+| Colour (§9) | Exposure, contrast, highlights, shadows, whites, blacks, temperature, tint, saturation, vibrance, hue | ✅ |
+| | Colour wheels (lift/gamma/gain), curves (RGB + R/G/B), presets, before/after | ✅ |
+| | .cube LUT import + intensity | ✅ |
+| | Scopes | ❌ |
 | Export (§11) | MP4 / MOV / WebM | ✅ |
 | | H.264, H.265, AV1, VP9, ProRes | ✅ (verified with real FFmpeg) |
 | | 480p – 8K, 23.976 – 120 fps | ✅ |

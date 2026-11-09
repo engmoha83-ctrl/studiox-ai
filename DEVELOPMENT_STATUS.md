@@ -2,6 +2,12 @@
 
 _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 
+### 0.2.0 — Milestone 4
+* Colour: every adjustment is baked into one 33³ 3D LUT (`src/engine/color.ts`) → WebGL2 3D texture in the preview and FFmpeg `lut3d` in the export (identical maths).
+* Keyframes: preview evaluates curves; export uses `perspective` (corner mapping per frame) for animated geometry, `geq` for animated opacity and `volume=…:eval=frame` for volume.
+* Masks & vignette are drawn by shared canvas code (`src/engine/layerFx.ts`) and composited with `blend`/`overlay` in the export.
+* Known limitation: audio effects (EQ, compressor, noise reduction) are export-only — the preview plays without them.
+
 ### 0.1.3
 * Window close button did nothing while a project was open: the close handler saves the project, then Tauri must destroy the window, which needed the `core:window:allow-destroy` permission. Fixed (save is capped at 3 s so closing never hangs).
 
@@ -24,7 +30,7 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 | **M1 Desktop foundation** | ✅ Complete (Linux-verified) · ⏳ Windows installer via CI | App builds and runs as a real Tauri desktop app; creates, saves and reopens projects (E2E-tested). The Windows `.exe`/`.msi` is produced by `.github/workflows/build.yml` — **not yet run on real Windows hardware.** |
 | **M2 Video playback & timeline** | ✅ Complete | Real clips edited on multiple tracks: add, move, trim, split, delete, ripple delete, zoom, undo/redo, synced playback (E2E-tested). |
 | **M3 Basic editing & export** | ✅ Complete | Crop/transform/speed/text/transitions/audio basics; real FFmpeg export with progress produces a playable file whose duration matches the timeline (E2E-tested incl. Arabic text in the rendered file). |
-| M4 Professional editing | ⏳ Partial | Proxy workflow ✅. Keyframes, effects, colour, LUT, chroma key, masking, audio mixer: not started. |
+| **M4 Professional editing** | ✅ Complete (0.2.0) | Keyframes (position, scale, rotation, opacity, volume + 5 easings), colour correction (11 controls, colour wheels, curves, 9 presets, before/after), .cube LUT import with intensity, chroma key, masks (rectangle/ellipse, feather, invert), effects (blur, sharpen, vignette, film grain, cinematic bars), audio mixing (track volume/mute/solo, EQ, compressor, noise reduction, master volume + limiter), proxies. Verified by real-FFmpeg render tests and app E2E. |
 | M5 Local AI | ⏳ Partial | Local silence detection (+ approved removal) ✅, scene-change detection (+ approved split) ✅. Whisper transcription, subtitles, reframing, assistant, model manager: not started. |
 | M6 Advanced AI | ❌ Not started | |
 | M7 Commercial readiness | ⏳ Partial | App icon ✅, crash-safe autosave/backups ✅, automated tests ✅, docs ✅, installer config ✅ (CI). Code signing, profiling, security review: not started. |
@@ -49,7 +55,7 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 - [x] Undo/redo (300 steps, named commands, coalesced slider edits), autosave (1.5 s), automatic backups (5 min, 30 kept), named versions
 - [x] English / Arabic UI with full RTL mirroring (timeline & preview stay LTR by design)
 - [x] Keyboard shortcuts (23) + shortcut sheet
-- [x] Application E2E test (tauri-driver/WebDriver): 34/34 checks (incl. drag & drop of templates and transitions)
+- [x] Application E2E test (tauri-driver/WebDriver): 37/37 checks (incl. drag & drop of templates and transitions)
 
 ## Known bugs / limitations
 
@@ -65,11 +71,10 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 
 ## Next development tasks (in order)
 
-1. Run the CI workflow, install the NSIS build on Windows 10/11, run through `docs/USER_GUIDE.md` manually and fix WebView2-specific issues.
-2. M4: keyframe model (`clip.keyframes[property] = [{t, v, easing}]`) → evaluate in `segments.evalLayer` and emit FFmpeg `sendcmd`/expression curves in `exportGraph`.
-3. M4: colour correction via a shared parameter set → preview: WebGL shader pass; export: `eq`, `colorbalance`, `curves`, `lut3d` (LUT import).
-4. M4: chroma key (`chromakey`/`colorkey` + shader), masks, audio mixer (EQ/compressor/limiter via `equalizer`, `acompressor`, `alimiter`), WebCodecs decoder.
-5. M5: whisper.cpp sidecar + model manager (download with progress, size, CPU/GPU check) → subtitles (SRT/VTT import/export, Arabic timing) → AI assistant via Ollama with the existing approval workflow.
+1. M5: whisper.cpp sidecar + local model manager (download with progress, size, CPU/GPU check).
+2. M5: automatic subtitles (Arabic/English) → subtitle track, SRT/VTT import/export, Arabic timing; karaoke-style highlighting.
+3. M5: smart reframing 16:9 → 9:16 (face/subject detection), AI editing assistant via Ollama using the existing approval workflow.
+4. Backlog from M4: more transitions (FFmpeg xfade family), text keyframes, audio-effects preview through WebAudio, WebCodecs decoder.
 
 ## Continuation instructions (next session)
 

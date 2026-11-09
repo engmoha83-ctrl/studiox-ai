@@ -281,6 +281,28 @@ def run(d):
     check("preview decodes real video frames (testsrc colours)", px and (max(px) - min(px) > 30 or max(px) > 90), str(px))
     shot(d, "05b-video-frame")
 
+    # ---------------------------------------------------------------- M4: colour, keyframes (preview)
+    first_id = sorted([c for c in project(d)["clips"].values() if c["type"] == "media" and c["start"] < 0.01], key=lambda c: c["trackId"])[0]["id"]
+    js(d, "window.__studiox.select([arguments[0]])", first_id)
+    time.sleep(0.4)
+    xclick(d, "Colour")
+    time.sleep(0.3)
+    xclick(d, "Black & white")
+    time.sleep(1.2)
+    px2 = js(d, """const c=document.querySelector('canvas'); const x=c.getContext('2d'); const w=c.width,h=c.height;
+      const d=x.getImageData(Math.round(w*0.1),Math.round(h*0.9),1,1).data; return [d[0],d[1],d[2]];""")
+    check("colour preset (B&W) applied in the preview via WebGL LUT", px2 and max(px2) - min(px2) < 16, str(px2))
+    shot(d, "05c-bw-preview")
+    xclick(d, "Video")
+    time.sleep(0.3)
+    js(d, "window.__studiox.seek(1)")
+    time.sleep(0.3)
+    d.find_element(By.XPATH, "//div[contains(@class,'text-muted')][contains(.,'Position X')]/following-sibling::div//button[@title='Add keyframe at playhead']").click()
+    time.sleep(0.4)
+    kf = project(d)["clips"][first_id].get("keyframes", {})
+    check("keyframe button adds a position keyframe", kf and len(kf.get("x", [])) == 1, str(kf))
+    press(d, Keys.CONTROL, "z")
+
     # preview quality really changes the render resolution
     from selenium.webdriver.support.ui import Select as UiSelect
     qsel = [e for e in d.find_elements(By.TAG_NAME, "select") if "Quarter" in e.text][0]
@@ -338,6 +360,8 @@ def run(d):
         exp = max(c["start"] + c["duration"] for c in project(d)["clips"].values())
         check("exported file duration matches the timeline", abs(dur - exp) < 0.15, f"{dur:.2f} vs {exp:.2f}")
         check("exported file has H.264 video + AAC audio", sorted(s["codec_name"] for s in pr["streams"]) == ["aac", "h264"])
+        grey = subprocess.check_output(["ffmpeg", "-v", "error", "-ss", "2.5", "-i", out_file, "-frames:v", "1", "-vf", "crop=1:1:192:972,format=rgb24", "-f", "rawvideo", "-"])
+        check("exported file carries the colour grade (B&W)", max(grey) - min(grey) < 16, str(list(grey)))
         for t in (1.5, 4.0, 12.3):
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(t), "-i", out_file, "-frames:v", "1", os.path.join(OUT, f"export-frame-{t}.png")])
 

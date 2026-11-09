@@ -1,12 +1,22 @@
 // Export queue: jobs run one at a time in the background (Rust/FFmpeg); the UI stays editable.
 import { api, errorText } from "../backend/api";
-import { buildExport, compositionSize, textFileName, textLayersFor } from "../engine/exportGraph";
+import { buildExport, compositionSize, layerPixelSize, needsAssets, textFileName, textLayersFor, type ClipAssets } from "../engine/exportGraph";
+import { buildLut, parseCube, toCube } from "../engine/color";
+import { canvasPng, drawMask, drawVignette } from "../engine/layerFx";
+import { videoLayers } from "../engine/segments";
 import type { ExportSettings } from "../engine/presets";
 import { textClipToPng } from "../engine/textRender";
 import { uid } from "../lib/id";
 import { app, type ExportJob } from "../store/appStore";
 import { getProject } from "../store/projectStore";
-import { isTextClip, type Project } from "../types/project";
+import { isMediaClip, isTextClip, type Project } from "../types/project";
+
+const utf8Base64 = (text: string) => {
+  const bytes = new TextEncoder().encode(text);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+};
 import i18n from "../i18n";
 
 const snapshots = new Map<string, Project>();
@@ -44,7 +54,25 @@ async function runJob(job: ExportJob) {
       const png = await textClipToPng(c, w, h, unit);
       textPaths[id] = await api.writeJobFile(job.id, textFileName(id), png);
     }
-    const plan = buildExport(p, job.settings, textPaths);
+    // colour LUTs, vignettes and masks are rendered with the same code as the preview
+    const assets: Record<string, ClipAssets> = {};
+    for (const layer of videoLayers(p, w, h)) {
+      const c = layer.clip;
+      if (!isMediaClip(c) || !layer.media) continue;
+      const need = needsAssets(c);
+      if (!need.lut && !need.vignette && !need.mask) continue;
+      const a: ClipAssets = {};
+      if (need.lut) {
+        const user = c.color!.lutPath ? parseCube(await api.readTextFile(c.color!.lutPath)) : null;
+        a.lut = await api.writeJobFile(job.id, `lut_${c.id}.cube`, utf8Base64(toCube(buildLut(c.color!, user))));
+      }
+      const size = layerPixelSize(p, c, layer.media.width, layer.media.height, w, h, unit);
+      const vig = c.effects?.find((e) => e.enabled && e.type === "vignette" && e.amount > 0);
+      if (need.vignette && vig) a.vignette = await api.writeJobFile(job.id, `vig_${c.id}.png`, await canvasPng(size.w, size.h, (ctx) => drawVignette(ctx, size.w, size.h, vig.amount)));
+      if (need.mask && c.mask) a.mask = await api.writeJobFile(job.id, `mask_${c.id}.png`, await canvasPng(size.w, size.h, (ctx) => drawMask(ctx, size.w, size.h, c.mask!)));
+      assets[c.id] = a;
+    }
+    const plan = buildExport(p, job.settings, textPaths, assets);
     if (app().exports.find((j) => j.id === job.id)?.status === "cancelled") return;
     await api.startExport({ jobId: job.id, inputArgs: plan.inputArgs, filterGraph: plan.filterGraph, outputArgs: plan.outputArgs, outputPath: job.outputPath, duration: plan.duration });
     app().updateExport(job.id, { status: "running" });

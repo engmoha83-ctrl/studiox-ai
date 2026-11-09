@@ -21,7 +21,7 @@ registerDropResolver((x, y) => timelineDropTarget(x, y));
 import { IconBtn, cx, openContextMenu, promptText, confirmAction } from "../common/ui";
 
 const RULER_H = 26;
-const HEADER_W = 172;
+const HEADER_W = 200;
 const EDGE_PX = 7;
 const SNAP_PX = 9;
 export const trackHeight = (t: Track) => (t.kind === "video" ? 66 : t.kind === "audio" ? 54 : 36);
@@ -205,6 +205,13 @@ const ClipView = memo(function ClipView({
         {media?.missing && <span className="rounded bg-red-600 px-1 text-[9.5px]">!</span>}
       </div>
       {isTextClip(clip) && <div className="absolute inset-0 top-[18px]" />}
+      {isMediaClip(clip) && clip.keyframes && (
+        <div className="pointer-events-none absolute inset-x-0 bottom-0.5 z-[2] h-2">
+          {[...new Set(Object.values(clip.keyframes).flatMap((l) => (l ?? []).map((k) => +k.t.toFixed(3))))].map((kt) => (
+            <span key={kt} className="absolute size-1.5 -translate-x-1/2 rotate-45 bg-amber-300" style={{ left: kt * zoom }} />
+          ))}
+        </div>
+      )}
       {clip.transitionIn && <TransitionMark side="in" type={clip.transitionIn.type} width={clip.transitionIn.duration * zoom} />}
       {clip.transitionOut && <TransitionMark side="out" type={clip.transitionOut.type} width={clip.transitionOut.duration * zoom} />}
       {dropEdge && <div className={cx("pointer-events-none absolute inset-y-0 z-[3] w-1/2 bg-violet-400/35", dropEdge === "in" ? "left-0" : "right-0")} />}
@@ -237,8 +244,9 @@ function Ruler({ zoom, width, scrollLeft, viewWidth, onScrub }: { zoom: number; 
     const minor = major / (major >= 1 ? 5 : 2);
     ctx.font = "10px Inter, sans-serif";
     ctx.textBaseline = "top";
-    const t0 = Math.floor(scrollLeft / zoom / minor) * minor;
-    for (let t = t0; t * zoom - scrollLeft < viewWidth; t += minor) {
+    const i0 = Math.floor(scrollLeft / zoom / minor);
+    for (let i = i0; i * minor * zoom - scrollLeft < viewWidth; i++) {
+      const t = Math.round(i * minor * 1e6) / 1e6; // integer stepping: no float drift in labels
       const x = Math.round(t * zoom - scrollLeft) + 0.5;
       const isMajor = Math.abs(t / major - Math.round(t / major)) < 1e-6;
       ctx.strokeStyle = isMajor ? "#4b5568" : "#2b3243";
@@ -291,6 +299,19 @@ function TrackHeader({ track, height, index, count }: { track: Track; height: nu
       { label: t("Add video track"), icon: <Film size={14} />, onClick: () => commit(t("Add track"), (d) => void ops.addTrack(d, "video")) },
       { label: t("Add audio track"), icon: <AudioLines size={14} />, onClick: () => commit(t("Add track"), (d) => void ops.addTrack(d, "audio")) },
       { label: t("Add text track"), icon: <Type size={14} />, onClick: () => commit(t("Add track"), (d) => void ops.addTrack(d, "text")) },
+      ...(track.kind !== "text"
+        ? [
+            {
+              label: `${t("Track volume")}… (${Math.round(track.volume * 100)}%)`,
+              icon: <Volume2 size={14} />,
+              onClick: async () => {
+                const v = await promptText(t("Track volume (0–200 %)"), String(Math.round(track.volume * 100)));
+                const n = v === null ? NaN : parseFloat(v);
+                if (!Number.isNaN(n)) upd(t("Track volume"), (tr) => void (tr.volume = Math.min(2, Math.max(0, n / 100))));
+              },
+            },
+          ]
+        : []),
       { label: t("Move up"), icon: <ArrowUp size={14} />, disabled: index === 0, onClick: () => commit(t("Move track"), (d) => void d.tracks.splice(index - 1, 0, d.tracks.splice(index, 1)[0])) },
       { label: t("Move down"), icon: <ArrowDown size={14} />, disabled: index === count - 1, onClick: () => commit(t("Move track"), (d) => void d.tracks.splice(index + 1, 0, d.tracks.splice(index, 1)[0])) },
       { separator: true },
@@ -305,7 +326,7 @@ function TrackHeader({ track, height, index, count }: { track: Track; height: nu
       },
     ]);
   return (
-    <div onContextMenu={menu} className={cx("flex items-center gap-1 border-b border-line bg-panel px-2", track.locked && "bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(255,255,255,.025)_6px_12px)]")} style={{ height }}>
+    <div onContextMenu={menu} title={track.kind !== "text" ? `${t("Track volume")}: ${Math.round(track.volume * 100)}%` : undefined} className={cx("relative flex items-center gap-1 border-b border-line bg-panel px-2", track.locked && "bg-[repeating-linear-gradient(135deg,transparent_0_6px,rgba(255,255,255,.025)_6px_12px)]")} style={{ height }}>
       <Icon size={13} className={cx("shrink-0", track.kind === "video" ? "text-indigo-300" : track.kind === "audio" ? "text-emerald-300" : "text-fuchsia-300")} />
       <button className="min-w-0 flex-1 truncate text-start text-[12px] font-medium" onDoubleClick={rename} title={track.name}>
         {track.name}
@@ -316,6 +337,11 @@ function TrackHeader({ track, height, index, count }: { track: Track; height: nu
       {track.kind !== "audio" && (
         <IconBtn tip={track.hidden ? t("Show track") : t("Hide track")} active={track.hidden} onClick={() => upd(t("Hide track"), (tr) => void (tr.hidden = !tr.hidden))} className="size-6">
           {track.hidden ? <EyeOff size={13} /> : <Eye size={13} />}
+        </IconBtn>
+      )}
+      {track.kind !== "text" && (
+        <IconBtn tip={t("Solo")} active={!!track.solo} onClick={() => upd(t("Solo"), (tr) => void (tr.solo = !tr.solo))} className="size-6">
+          <span className="text-[10px] font-bold">S</span>
         </IconBtn>
       )}
       {track.kind !== "text" && (
