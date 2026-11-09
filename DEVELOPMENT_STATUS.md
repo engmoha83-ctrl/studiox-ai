@@ -2,6 +2,12 @@
 
 _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 
+### 0.3.0 — Milestone 5 (part 1)
+* `src-tauri/src/ai.rs`: whisper.cpp runner (16 kHz extraction → `whisper-cli -oj -pp -ml -sow [-tr]`, progress events, cancel), model downloads (ureq, `.part` + rename, HTTPS from Hugging Face/GitHub only), Ollama detection/chat (for the assistant).
+* whisper.cpp CLI for Windows is bundled by CI (`npm run fetch-whisper`); models are downloaded by the user.
+* Real transcription is tested in CI (`ai` job: whisper.cpp + tiny model + espeak-ng speech) because model hosting is not reachable from the development sandbox.
+* Many static text clips on one track (subtitles) are rendered through a single ffconcat input — verified with 40 cues (frame-accurate timing).
+
 ### 0.2.0 — Milestone 4
 * Colour: every adjustment is baked into one 33³ 3D LUT (`src/engine/color.ts`) → WebGL2 3D texture in the preview and FFmpeg `lut3d` in the export (identical maths).
 * Keyframes: preview evaluates curves; export uses `perspective` (corner mapping per frame) for animated geometry, `geq` for animated opacity and `volume=…:eval=frame` for volume.
@@ -31,7 +37,7 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 | **M2 Video playback & timeline** | ✅ Complete | Real clips edited on multiple tracks: add, move, trim, split, delete, ripple delete, zoom, undo/redo, synced playback (E2E-tested). |
 | **M3 Basic editing & export** | ✅ Complete | Crop/transform/speed/text/transitions/audio basics; real FFmpeg export with progress produces a playable file whose duration matches the timeline (E2E-tested incl. Arabic text in the rendered file). |
 | **M4 Professional editing** | ✅ Complete (0.2.0) | Keyframes (position, scale, rotation, opacity, volume + 5 easings), colour correction (11 controls, colour wheels, curves, 9 presets, before/after), .cube LUT import with intensity, chroma key, masks (rectangle/ellipse, feather, invert), effects (blur, sharpen, vignette, film grain, cinematic bars), audio mixing (track volume/mute/solo, EQ, compressor, noise reduction, master volume + limiter), proxies. Verified by real-FFmpeg render tests and app E2E. |
-| M5 Local AI | ⏳ Partial | Local silence detection (+ approved removal) ✅, scene-change detection (+ approved split) ✅. Whisper transcription, subtitles, reframing, assistant, model manager: not started. |
+| M5 Local AI | ⏳ In progress (0.3.0) | ✅ silence detection + removal, scene detection + split, **local model manager** (whisper.cpp models: download with progress / cancel / delete, hardware-based recommendation), **automatic subtitles** (whisper.cpp, Arabic/English/auto + translate-to-English, line length), SRT/VTT import & export, batched subtitle rendering (one ffconcat stream per track). ⏳ smart reframing, AI assistant (Ollama + built-in commands). |
 | M6 Advanced AI | ❌ Not started | |
 | M7 Commercial readiness | ⏳ Partial | App icon ✅, crash-safe autosave/backups ✅, automated tests ✅, docs ✅, installer config ✅ (CI). Code signing, profiling, security review: not started. |
 
@@ -55,7 +61,7 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 - [x] Undo/redo (300 steps, named commands, coalesced slider edits), autosave (1.5 s), automatic backups (5 min, 30 kept), named versions
 - [x] English / Arabic UI with full RTL mirroring (timeline & preview stay LTR by design)
 - [x] Keyboard shortcuts (23) + shortcut sheet
-- [x] Application E2E test (tauri-driver/WebDriver): 37/37 checks (incl. drag & drop of templates and transitions)
+- [x] Application E2E test (tauri-driver/WebDriver): 39/39 checks (incl. drag & drop of templates and transitions)
 
 ## Known bugs / limitations
 
@@ -71,9 +77,7 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 
 ## Next development tasks (in order)
 
-1. M5: whisper.cpp sidecar + local model manager (download with progress, size, CPU/GPU check).
-2. M5: automatic subtitles (Arabic/English) → subtitle track, SRT/VTT import/export, Arabic timing; karaoke-style highlighting.
-3. M5: smart reframing 16:9 → 9:16 (face/subject detection), AI editing assistant via Ollama using the existing approval workflow.
+1. M5: smart reframing 16:9 → 9:16 (face/subject detection), AI editing assistant via Ollama using the existing approval workflow.
 4. Backlog from M4: more transitions (FFmpeg xfade family), text keyframes, audio-effects preview through WebAudio, WebCodecs decoder.
 
 ## Continuation instructions (next session)

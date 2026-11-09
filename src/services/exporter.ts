@@ -1,6 +1,6 @@
 // Export queue: jobs run one at a time in the background (Rust/FFmpeg); the UI stays editable.
 import { api, errorText } from "../backend/api";
-import { buildExport, compositionSize, layerPixelSize, needsAssets, textFileName, textLayersFor, type ClipAssets } from "../engine/exportGraph";
+import { buildExport, compositionSize, concatList, isBatchableText, layerPixelSize, needsAssets, textFileName, textLayersFor, type ClipAssets } from "../engine/exportGraph";
 import { buildLut, parseCube, toCube } from "../engine/color";
 import { canvasPng, drawMask, drawVignette } from "../engine/layerFx";
 import { videoLayers } from "../engine/segments";
@@ -72,7 +72,17 @@ async function runJob(job: ExportJob) {
       if (need.mask && c.mask) a.mask = await api.writeJobFile(job.id, `mask_${c.id}.png`, await canvasPng(size.w, size.h, (ctx) => drawMask(ctx, size.w, size.h, c.mask!)));
       assets[c.id] = a;
     }
-    const plan = buildExport(p, job.settings, textPaths, assets);
+    // text tracks with several static clips (subtitles) → one ffconcat stream per track
+    const batches: Record<string, string> = {};
+    let blank = "";
+    for (const tr of p.tracks.filter((x) => x.kind === "text" && !x.hidden)) {
+      const clips = Object.values(p.clips).filter((c) => c.trackId === tr.id && isBatchableText(c) && textPaths[c.id]);
+      if (clips.length < 2) continue;
+      blank ||= await api.writeJobFile(job.id, "blank.png", await canvasPng(w, h, () => undefined));
+      const list = concatList(clips.map((c) => ({ start: c.start, end: c.start + c.duration, png: textPaths[c.id] })), blank);
+      batches[tr.id] = await api.writeJobFile(job.id, `track_${tr.id}.ffconcat`, utf8Base64(list));
+    }
+    const plan = buildExport(p, job.settings, textPaths, assets, batches);
     if (app().exports.find((j) => j.id === job.id)?.status === "cancelled") return;
     await api.startExport({ jobId: job.id, inputArgs: plan.inputArgs, filterGraph: plan.filterGraph, outputArgs: plan.outputArgs, outputPath: job.outputPath, duration: plan.duration });
     app().updateExport(job.id, { status: "running" });

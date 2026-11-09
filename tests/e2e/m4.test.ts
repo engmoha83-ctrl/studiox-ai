@@ -182,3 +182,37 @@ describe("M4 rendering", () => {
     expect(pr.streams.some((s: any) => s.codec_type === "audio")).toBe(true);
   });
 });
+
+describe("subtitle batching (ffconcat)", () => {
+  it("renders 40 subtitle cues (16 s)  through one concat input with correct timing", async () => {
+    const { cueClips } = await import("../../src/engine/subtitles");
+    const { concatList } = await import("../../src/engine/exportGraph");
+    let p = proj((_p, v1) => {
+      const bg = makeMediaClip(RED, v1, 0, 25);
+      bg.duration = 17;
+      return [bg];
+    });
+    const tr = p.tracks[0].id;
+    const cues = Array.from({ length: 40 }, (_, i) => ({ start: i * 0.4, end: i * 0.4 + 0.2, text: `cue ${i}` }));
+    const clips = cueClips(cues, tr, 360, 25);
+    p = produce(p, (d) => clips.forEach((c) => ops.addClip(d, c)));
+    // stand-in rasterised cue: white box at the centre; blank: transparent
+    ff(["-f", "lavfi", "-i", "color=c=black@0:s=640x360,format=rgba,drawbox=x=280:y=160:w=80:h=40:color=white@1:t=fill:replace=1", "-frames:v", "1", join(dir, "cue.png")]);
+    ff(["-f", "lavfi", "-i", "color=c=black@0:s=640x360,format=rgba", "-frames:v", "1", join(dir, "blank.png")]);
+    const textPaths: Record<string, string> = {};
+    for (const c of Object.values(p.clips)) if (c.type === "text") textPaths[c.id] = join(dir, "cue.png");
+    const list = join(dir, "subs.ffconcat");
+    writeFileSync(list, concatList(Object.values(p.clips).filter((c) => c.type === "text").map((c) => ({ start: c.start, end: c.start + c.duration, png: textPaths[c.id] })), join(dir, "blank.png")));
+    const out = join(dir, "subs.mp4");
+    const plan = buildExport(p, S, textPaths, {}, { [tr]: list });
+    expect(plan.inputArgs.filter((a) => a === "-i")).toHaveLength(2); // background + ONE subtitle stream
+    const script = join(dir, "subs.txt");
+    writeFileSync(script, plan.filterGraph);
+    execFileSync(FF, ["-hide_banner", "-loglevel", "error", "-y", ...plan.inputArgs, "-filter_complex_script", script, ...plan.outputArgs, out]);
+    for (const i of [0, 4, 20, 39]) {
+      expect(px(out, i * 0.4 + 0.1, 320, 180)[1]).toBeGreaterThan(200); // cue i visible
+      expect(px(out, i * 0.4 + 0.3, 320, 180)[1]).toBeLessThan(60); // gap → red background
+    }
+    expect(px(out, 16.5, 320, 180)[1]).toBeLessThan(60); // after the last cue
+  });
+});

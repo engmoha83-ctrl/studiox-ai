@@ -104,6 +104,26 @@ export interface JobEnd {
   elapsed: number;
 }
 
+export interface AiStatus {
+  whisper?: string | null;
+  modelsDir: string;
+  models: { file: string; path: string; size: number }[];
+  ollama?: string[] | null;
+}
+export interface AiProgress {
+  id: string;
+  kind: "download" | "transcribe";
+  progress: number;
+  received: number;
+  total: number;
+}
+export interface AiEnd {
+  id: string;
+  kind: "download" | "transcribe";
+  output?: string | null;
+  message?: string | null;
+}
+
 export const isTauri = () => typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 let mediaBase = "";
@@ -149,6 +169,14 @@ export const api = {
   listBackups: (projectId: string) => invoke<BackupMeta[]>("db_list_backups", { projectId }),
   getBackup: (id: number) => invoke<string>("db_get_backup", { id }),
   deleteBackup: (id: number) => invoke<void>("db_delete_backup", { id }),
+  aiStatus: () => invoke<AiStatus>("ai_status"),
+  aiSetWhisperDir: (dir: string) => invoke<string | null>("ai_set_whisper_dir", { dir }),
+  aiDownloadModel: (jobId: string, url: string, file: string) => invoke<void>("ai_download_model", { jobId, url, file }),
+  aiDeleteModel: (file: string) => invoke<void>("ai_delete_model", { file }),
+  aiCancel: (jobId: string) => invoke<boolean>("ai_cancel", { jobId }),
+  aiTranscribe: (req: { jobId: string; media: string; start: number; duration: number; modelFile: string; language: string; translate: boolean; maxLen: number }) =>
+    invoke<void>("ai_transcribe", { req }),
+  aiOllamaChat: (model: string, system: string, user: string) => invoke<string>("ai_ollama_chat", { model, system, user }),
   getSetting: (key: string) => invoke<string | null>("get_setting", { key }),
   setSetting: (key: string, value: string) => invoke<void>("set_setting", { key, value }),
 };
@@ -165,6 +193,10 @@ export function onJobError(cb: (p: JobEnd) => void): Promise<UnlistenFn> {
 export function onJobCancelled(cb: (p: JobEnd) => void): Promise<UnlistenFn> {
   return listen<JobEnd>("job-cancelled", (e) => cb(e.payload));
 }
+
+export const onAiProgress = (cb: (p: AiProgress) => void) => listen<AiProgress>("ai-progress", (e) => cb(e.payload));
+export const onAiDone = (cb: (p: AiEnd) => void) => listen<AiEnd>("ai-done", (e) => cb(e.payload));
+export const onAiError = (cb: (p: AiEnd) => void) => listen<AiEnd>("ai-error", (e) => cb(e.payload));
 
 export function errorText(e: unknown): string {
   if (typeof e === "string") return e;

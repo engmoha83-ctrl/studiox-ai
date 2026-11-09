@@ -6,3 +6,7 @@ src-tauri/binaries/ffmpeg*
 src-tauri/binaries/ffprobe*
 .ffmpeg-download/
 *.log
+src-tauri/binaries/whisper/*.exe
+src-tauri/binaries/whisper/*.dll
+src-tauri/binaries/whisper/whisper-cli
+.whisper-download/

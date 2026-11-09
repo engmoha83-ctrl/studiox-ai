@@ -7,6 +7,7 @@ import { applyLanguage } from "../../i18n";
 import { useApp } from "../../store/appStore";
 import { useUi } from "../../store/uiStore";
 import { Button, Modal, Row, Section, Select, Toggle } from "../common/ui";
+import AiModels from "./AiModels";
 
 export default function SettingsDialog() {
   const { t } = useTranslation();
@@ -119,6 +120,8 @@ export default function SettingsDialog() {
           </div>
         )}
       </Section>
+
+      <AiModels />
 
       {system && (
         <Section title={t("System")}>

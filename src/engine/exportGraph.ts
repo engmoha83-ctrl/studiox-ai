@@ -2,7 +2,7 @@
 // Pure function — unit tested in tests/exportGraph.test.ts and executed with a
 // real FFmpeg in scripts/e2e-export.mjs.
 
-import { isMediaClip, isTextClip, type MediaClip, type Project } from "../types/project";
+import { isMediaClip, isTextClip, type Clip, type MediaClip, type Project, type TextClip } from "../types/project";
 import { hasKf, kfExpr } from "./keyframes";
 import { isColorIdentity } from "./color";
 import { audioSegments, mediaRect, videoLayers, type LayerAnim, type RenderLayer } from "./segments";
@@ -33,12 +33,33 @@ export function compositionSize(p: Project, s: ExportSettings) {
 
 /** Text clips that need a rasterised PNG for this export. */
 export function textLayersFor(p: Project): string[] {
+  // every text clip is rasterised; batchable ones are then streamed through one concat input per track
   return videoLayers(p)
     .filter((l) => isTextClip(l.clip))
     .map((l) => l.clip.id);
 }
 
 export const textFileName = (clipId: string) => `text_${clipId}.png`;
+
+/** Text clips without animation/transition are merged per track into ONE concat stream (subtitles). */
+export function isBatchableText(c: Clip): c is TextClip {
+  return isTextClip(c) && c.animIn === "none" && c.animOut === "none" && !c.transitionIn && !c.transitionOut && c.opacity >= 0.999;
+}
+
+/** ffconcat list: blank gaps + one PNG per cue, starting at t=0. */
+export function concatList(entries: { start: number; end: number; png: string }[], blank: string): string {
+  const q = (p: string) => `'${p.replace(/\\/g, "/").replace(/'/g, "'\\''")}'`;
+  const lines = ["ffconcat version 1.0"];
+  let t = 0;
+  const sorted = [...entries].sort((a, b) => a.start - b.start);
+  for (const e of sorted) {
+    if (e.start > t + 1e-4) lines.push(`file ${q(blank)}`, `duration ${f(e.start - t)}`);
+    lines.push(`file ${q(e.png)}`, `duration ${f(e.end - Math.max(t, e.start))}`);
+    t = e.end;
+  }
+  lines.push(`file ${q(blank)}`, "duration 1", `file ${q(blank)}`);
+  return lines.join("\n") + "\n";
+}
 
 /** Extra per-clip files produced before export (see services/exporter). */
 export interface ClipAssets {
@@ -233,7 +254,14 @@ function audioCodecArgs(s: ExportSettings): string[] {
  * Build an export plan. `textPaths` maps text clip id → rasterised PNG path
  * (produced by textRender.textClipToPng at composition size).
  */
-export function buildExport(p: Project, s: ExportSettings, textPaths: Record<string, string>, assets: Record<string, ClipAssets> = {}): ExportPlan {
+export function buildExport(
+  p: Project,
+  s: ExportSettings,
+  textPaths: Record<string, string>,
+  assets: Record<string, ClipAssets> = {},
+  /** trackId → ffconcat list path for batched text clips */
+  textBatches: Record<string, string> = {},
+): ExportPlan {
   const { unit, w: CW, h: CH } = compositionSize(p, s);
   const fps = s.fps;
   const total = Math.max(1 / fps, projectDuration(p));
@@ -250,10 +278,23 @@ export function buildExport(p: Project, s: ExportSettings, textPaths: Record<str
   let base = "base0";
   let layerIdx = 0;
 
+  const batchDone = new Set<string>();
   for (const layer of videoLayers(p, CW, CH)) {
     const clip = layer.clip;
     const L = layer.windowEnd - layer.windowStart;
     if (L <= 0) continue;
+    const batch = textBatches[clip.trackId];
+    if (batch && isBatchableText(clip)) {
+      if (batchDone.has(clip.trackId)) continue;
+      batchDone.add(clip.trackId);
+      const bi = addInput(["-f", "concat", "-safe", "0", "-i", batch]);
+      chains.push(`[${bi}:v]format=rgba,fps=${f(fps)},setpts=PTS-STARTPTS[l${layerIdx}]`);
+      const next = `base${layerIdx + 1}`;
+      chains.push(`[${base}][l${layerIdx}]overlay=0:0:eof_action=pass:format=auto[${next}]`);
+      base = next;
+      layerIdx++;
+      continue;
+    }
     const anim = scaleAnim(layer.anim, 1); // anim already in composition px (videoLayers got CW/CH)
     const parts: string[] = [];
     let idx: number;

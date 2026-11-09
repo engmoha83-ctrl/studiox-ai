@@ -5,6 +5,8 @@ import { useProject } from "./store/projectStore";
 import { useUi } from "./store/uiStore";
 import { useApp } from "./store/appStore";
 import { player } from "./preview/player";
+import { parseSubtitles } from "./engine/subtitles";
+import { addSubtitleTrack, refreshAiStatus, useAi } from "./services/ai";
 
 export function installTestHooks() {
   try {
@@ -19,5 +21,7 @@ export function installTestHooks() {
     app: () => useApp.getState(),
     seek: (t: number) => player.seek(t),
     select: (ids: string[]) => useUi.getState().select(ids),
+    importSubtitles: (text: string) => addSubtitleTrack(parseSubtitles(text)),
+    aiStatus: async () => (await refreshAiStatus(), useAi.getState().status),
   };
 }

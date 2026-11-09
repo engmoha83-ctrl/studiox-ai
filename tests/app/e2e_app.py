@@ -282,7 +282,9 @@ def run(d):
     shot(d, "05b-video-frame")
 
     # ---------------------------------------------------------------- M4: colour, keyframes (preview)
-    first_id = sorted([c for c in project(d)["clips"].values() if c["type"] == "media" and c["start"] < 0.01], key=lambda c: c["trackId"])[0]["id"]
+    pa = project(d)
+    vid_a = next(m["id"] for m in pa["media"] if m["name"] == "clip_a.mp4")
+    first_id = next(c["id"] for c in pa["clips"].values() if c["type"] == "media" and c["mediaId"] == vid_a and c["start"] < 0.01)
     js(d, "window.__studiox.select([arguments[0]])", first_id)
     time.sleep(0.4)
     xclick(d, "Colour")
@@ -332,6 +334,15 @@ def run(d):
     ph = js(d, "return window.__studiox.ui().playhead")
     check("playback advances the playhead", 1.2 < ph < 4.5, f"{ph:.2f}s")
 
+    # ---------------------------------------------------------------- M5: subtitles (SRT import → batched export)
+    srt = "1\n00:00:00,500 --> 00:00:03,000\nأهلاً بكم في ستوديو إكس\n\n2\n00:00:03,500 --> 00:00:06,000\nWelcome to StudioX\n\n3\n00:00:12,000 --> 00:00:14,000\nشكراً للمشاهدة\n"
+    js(d, "window.__studiox.importSubtitles(arguments[0])", srt)
+    time.sleep(0.6)
+    subs = [c for c in project(d)["clips"].values() if c["type"] == "text" and c.get("name") == "subtitle"]
+    check("SRT subtitles imported onto their own track", len(subs) == 3 and len({c["trackId"] for c in subs}) == 1, str([round(c["start"], 2) for c in subs]))
+    st = js(d, "return window.__studiox.aiStatus()")
+    check("AI status reports the local models folder", st and "modelsDir" in st, json.dumps(st)[:200])
+
     # ---------------------------------------------------------------- export
     os.makedirs(os.path.expanduser("~/Videos"), exist_ok=True)
     out_file = os.path.expanduser("~/Videos/e2e_export.mp4")
@@ -362,7 +373,7 @@ def run(d):
         check("exported file has H.264 video + AAC audio", sorted(s["codec_name"] for s in pr["streams"]) == ["aac", "h264"])
         grey = subprocess.check_output(["ffmpeg", "-v", "error", "-ss", "2.5", "-i", out_file, "-frames:v", "1", "-vf", "crop=1:1:192:972,format=rgb24", "-f", "rawvideo", "-"])
         check("exported file carries the colour grade (B&W)", max(grey) - min(grey) < 16, str(list(grey)))
-        for t in (1.5, 4.0, 12.3):
+        for t in (1.5, 4.0, 12.3, 13.0):
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(t), "-i", out_file, "-frames:v", "1", os.path.join(OUT, f"export-frame-{t}.png")])
 
     # ---------------------------------------------------------------- persistence

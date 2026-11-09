@@ -1,6 +1,6 @@
 [package]
 name = "studiox-ai"
-version = "0.2.0"
+version = "0.3.0"
 description = "STUDIOX AI — professional AI-powered desktop video editor"
 authors = ["StudioX"]
 edition = "2021"
@@ -23,6 +23,7 @@ rusqlite = { version = "0.41", features = ["bundled"] }
 thiserror = "2"
 base64 = "0.22"
 sysinfo = "0.40"
+ureq = { version = "2", features = ["json"] }
 
 [profile.release]
 codegen-units = 1

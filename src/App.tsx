@@ -12,6 +12,7 @@ import HomeScreen from "./components/home/HomeScreen";
 import Editor from "./components/editor/Editor";
 import SettingsDialog from "./components/settings/SettingsDialog";
 import { installTestHooks } from "./testHooks";
+import { wireAiEvents } from "./services/ai";
 
 function Toasts() {
   const toasts = useApp((s) => s.toasts);
@@ -47,6 +48,7 @@ export default function App() {
   useEffect(() => {
     if (!isTauri()) return;
     installTestHooks();
+    wireAiEvents();
     const set = useApp.getState().set;
     void (async () => {
       const lang = (await api.getSetting("language").catch(() => null)) as "en" | "ar" | null;

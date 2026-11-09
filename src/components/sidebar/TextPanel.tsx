@@ -1,4 +1,14 @@
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { FileDown, FileUp } from "lucide-react";
+import { api, errorText } from "../../backend/api";
+import { cuesFromClips, parseSubtitles, toSrt, toVtt } from "../../engine/subtitles";
+import { addSubtitleTrack } from "../../services/ai";
+import { useApp } from "../../store/appStore";
+import { useProject } from "../../store/projectStore";
+import { isTextClip } from "../../types/project";
+import { Button, Select } from "../common/ui";
 import { Plus } from "lucide-react";
 import { addText } from "../../editor/actions";
 import { beginDrag } from "../../editor/dragdrop";
@@ -37,10 +47,61 @@ export const TEXT_PRESETS: TextPreset[] = [
   { id: "numbers", name: "Arabic numerals", text: "العدد ٢٠٢٦ — 2026", style: { fontFamily: "Noto Naskh Arabic", fontWeight: 700, fontSize: 90 } },
 ];
 
+function SubtitleFiles() {
+  const { t } = useTranslation();
+  const project = useProject((s) => s.project)!;
+  const textTracks = project.tracks.filter((tr) => tr.kind === "text" && Object.values(project.clips).some((c) => c.trackId === tr.id));
+  const [track, setTrack] = useState("");
+  const cur = textTracks.find((x) => x.id === track) ?? textTracks[0];
+  const importFile = async () => {
+    const f = await openDialog({ multiple: false, filters: [{ name: t("Subtitles"), extensions: ["srt", "vtt"] }] });
+    if (typeof f !== "string") return;
+    try {
+      const cues = parseSubtitles(await api.readTextFile(f));
+      if (!cues.length) throw new Error(t("No subtitle lines found in the file."));
+      addSubtitleTrack(cues, f.split(/[\\/]/).pop()?.replace(/\.(srt|vtt)$/i, "") ?? t("Subtitles"));
+      useApp.getState().toast(t("{{n}} subtitle lines imported", { n: cues.length }), "success");
+    } catch (e) {
+      useApp.getState().toast(errorText(e), "error");
+    }
+  };
+  const exportFile = async (fmt: "srt" | "vtt") => {
+    if (!cur) return;
+    const clips = Object.values(project.clips).filter((c) => c.trackId === cur.id && isTextClip(c));
+    const path = await saveDialog({ defaultPath: `${project.name}.${fmt}`, filters: [{ name: fmt.toUpperCase(), extensions: [fmt] }] });
+    if (!path) return;
+    const cues = cuesFromClips(clips.filter(isTextClip));
+    await api.writeTextFile(path, fmt === "srt" ? toSrt(cues) : toVtt(cues));
+    useApp.getState().toast(t("Subtitles saved"), "success");
+  };
+  return (
+    <div className="mb-4 space-y-2 rounded-lg border border-line p-2.5">
+      <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">{t("Subtitle files")}</div>
+      <Button className="w-full" onClick={importFile}>
+        <FileDown size={14} />
+        {t("Import SRT / VTT…")}
+      </Button>
+      {cur && (
+        <div className="flex gap-1.5">
+          <Select value={cur.id} onChange={setTrack} options={textTracks.map((x) => ({ value: x.id, label: x.name }))} />
+          <Button onClick={() => exportFile("srt")} title={t("Export track as SRT")}>
+            <FileUp size={13} />
+            SRT
+          </Button>
+          <Button onClick={() => exportFile("vtt")} title={t("Export track as VTT")}>
+            VTT
+          </Button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TextPanel() {
   const { t } = useTranslation();
   return (
     <div className="h-full overflow-auto p-2.5">
+      <SubtitleFiles />
       <div className="mb-2 px-1 text-[11px] font-semibold uppercase tracking-wide text-muted">{t("Text templates")}</div>
       <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))" }}>
         {TEXT_PRESETS.map((p) => (

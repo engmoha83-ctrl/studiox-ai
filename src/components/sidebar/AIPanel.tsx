@@ -9,6 +9,7 @@ import { useProject } from "../../store/projectStore";
 import { useUi } from "../../store/uiStore";
 import { isMediaClip, type MediaClip } from "../../types/project";
 import { Button, NumberField, Row, Section } from "../common/ui";
+import SubtitlesAI from "./SubtitlesAI";
 
 interface Proposal {
   kind: "silence" | "scenes";
@@ -105,7 +106,8 @@ export default function AIPanel() {
         <Cpu size={15} className="mt-0.5 shrink-0" />
         <span>{t("These tools run locally with FFmpeg. Your media never leaves this computer.")}</span>
       </div>
-      {!clip && <p className="px-3 pb-2 text-[12px] text-muted">{t("Select one video or audio clip on the timeline to analyse it.")}</p>}
+      <SubtitlesAI />
+      {!clip && <p className="px-3 pb-2 pt-2 text-[12px] text-muted">{t("Select one video or audio clip on the timeline to analyse it.")}</p>}
 
       <Section title={t("Silence detection")} right={<AudioLines size={14} className="text-dim" />}>
         <Row label={t("Threshold")}>

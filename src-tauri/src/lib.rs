@@ -1,3 +1,4 @@
+mod ai;
 mod db;
 mod error;
 mod ffmpeg;
@@ -18,6 +19,7 @@ pub struct Dirs {
     pub cache: PathBuf,
     pub temp: PathBuf,
     pub proxies: PathBuf,
+    pub models: PathBuf,
 }
 
 pub struct AppState {
@@ -27,6 +29,8 @@ pub struct AppState {
     jobs: Jobs,
     caps: Mutex<Option<EncoderCaps>>,
     media_base: String,
+    whisper: RwLock<Option<PathBuf>>,
+    ai_cancels: ai::Cancels,
 }
 
 impl AppState {
@@ -263,6 +267,90 @@ async fn detect_scenes(state: State<'_, AppState>, path: String, threshold: f64)
     blocking(move || ffmpeg::detect_scenes(&ff, &PathBuf::from(path), threshold)).await
 }
 
+// ------------------------------------------------------------------ local AI
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AiStatus {
+    whisper: Option<String>,
+    models_dir: String,
+    models: Vec<ai::ModelFile>,
+    ollama: Option<Vec<String>>,
+}
+
+#[tauri::command]
+async fn ai_status(state: State<'_, AppState>) -> AppResult<AiStatus> {
+    let dir = state.dirs.models.clone();
+    let whisper = state.whisper.read().unwrap().clone();
+    let ollama = blocking(|| Ok(ai::ollama_models())).await?;
+    Ok(AiStatus { whisper: whisper.map(|p| p.to_string_lossy().into()), models: ai::list_models(&dir), models_dir: dir.to_string_lossy().into(), ollama })
+}
+
+#[tauri::command]
+async fn ai_set_whisper_dir(app: AppHandle, state: State<'_, AppState>, dir: String) -> AppResult<Option<String>> {
+    let found = ai::locate_whisper(&app, Some(dir.clone()));
+    if found.is_none() {
+        return msg("whisper-cli was not found in that folder.");
+    }
+    state.db.set_setting("whisperDir", &dir)?;
+    *state.whisper.write().unwrap() = found.clone();
+    Ok(found.map(|p| p.to_string_lossy().into()))
+}
+
+#[tauri::command]
+async fn ai_download_model(app: AppHandle, state: State<'_, AppState>, job_id: String, url: String, file: String) -> AppResult<()> {
+    ai::start_download(app, state.ai_cancels.clone(), job_id, url, state.dirs.models.clone(), file)
+}
+
+#[tauri::command]
+async fn ai_delete_model(state: State<'_, AppState>, file: String) -> AppResult<()> {
+    if file.contains('/') || file.contains('\\') || !file.ends_with(".bin") {
+        return msg("Invalid model name");
+    }
+    std::fs::remove_file(state.dirs.models.join(file))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn ai_cancel(state: State<'_, AppState>, job_id: String) -> AppResult<bool> {
+    Ok(ai::cancel(&state.ai_cancels, &job_id))
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct TranscribeRequest {
+    job_id: String,
+    media: String,
+    start: f64,
+    duration: f64,
+    model_file: String,
+    language: String,
+    translate: bool,
+    max_len: u32,
+}
+
+#[tauri::command]
+async fn ai_transcribe(app: AppHandle, state: State<'_, AppState>, req: TranscribeRequest) -> AppResult<()> {
+    let whisper = state.whisper.read().unwrap().clone().ok_or_else(|| error::AppError::Msg("The speech recognition engine (whisper.cpp) is not installed.".into()))?;
+    let spec = ai::TranscribeSpec {
+        work_dir: state.dirs.temp.join(&req.job_id),
+        id: req.job_id,
+        media: PathBuf::from(req.media),
+        start: req.start,
+        duration: req.duration,
+        model: state.dirs.models.join(&req.model_file),
+        language: req.language,
+        translate: req.translate,
+        max_len: req.max_len,
+    };
+    ai::start_transcribe(app, state.ai_cancels.clone(), state.ff(), whisper, spec)
+}
+
+#[tauri::command]
+async fn ai_ollama_chat(model: String, system: String, user: String) -> AppResult<String> {
+    blocking(move || ai::ollama_chat(&model, &system, &user)).await
+}
+
 // ------------------------------------------------------------------ files
 
 #[tauri::command]
@@ -360,8 +448,8 @@ pub fn run() {
             let handle = app.handle();
             let data = handle.path().app_data_dir()?;
             let cache_root = handle.path().app_cache_dir()?;
-            let dirs = Dirs { cache: cache_root.join("media"), temp: cache_root.join("tmp"), proxies: data.join("proxies"), data };
-            for d in [&dirs.data, &dirs.cache, &dirs.temp, &dirs.proxies] {
+            let dirs = Dirs { cache: cache_root.join("media"), temp: cache_root.join("tmp"), proxies: data.join("proxies"), models: data.join("models").join("whisper"), data };
+            for d in [&dirs.data, &dirs.cache, &dirs.temp, &dirs.proxies, &dirs.models] {
                 std::fs::create_dir_all(d)?;
             }
             // Leftover temp files from an interrupted session (e.g. crash during export)
@@ -374,6 +462,7 @@ pub fn run() {
             let custom = db.get_setting("ffmpegDir").ok().flatten();
             let ff = ffmpeg::locate(handle, custom);
             let server = media_server::start()?;
+            let whisper = ai::locate_whisper(handle, db.get_setting("whisperDir").ok().flatten());
             app.manage(AppState {
                 media_base: server.base_url,
                 db: Arc::new(db),
@@ -381,6 +470,8 @@ pub fn run() {
                 ff: RwLock::new(ff),
                 jobs: Arc::new(Mutex::new(Default::default())),
                 caps: Mutex::new(None),
+                whisper: RwLock::new(whisper),
+                ai_cancels: Arc::new(Mutex::new(Default::default())),
             });
             Ok(())
         })
@@ -416,7 +507,14 @@ pub fn run() {
             db_get_backup,
             db_delete_backup,
             get_setting,
-            set_setting
+            set_setting,
+            ai_status,
+            ai_set_whisper_dir,
+            ai_download_model,
+            ai_delete_model,
+            ai_cancel,
+            ai_transcribe,
+            ai_ollama_chat
         ])
         .run(tauri::generate_context!())
         .expect("error while running StudioX AI");
