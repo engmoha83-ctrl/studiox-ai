@@ -40,7 +40,16 @@ jobs:
         env:
           FFMPEG_VARIANT: ${{ github.event.inputs.ffmpeg_variant || 'lgpl' }}
       - name: Build installer (NSIS .exe + MSI)
-        run: npx tauri build
+        shell: pwsh
+        run: |
+          # the bundler downloads NSIS/WiX; retry on transient network errors
+          for ($i = 1; $i -le 3; $i++) {
+            npx tauri build
+            if ($LASTEXITCODE -eq 0) { exit 0 }
+            Write-Host "Build attempt $i failed, retrying in 60 s…"
+            Start-Sleep -Seconds 60
+          }
+          exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: StudioX-AI-windows-x64

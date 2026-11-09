@@ -33,11 +33,20 @@ if (!urls.length) {
   process.exit(0);
 }
 
-async function download(url, file) {
-  console.log("Downloading", url);
-  const res = await fetch(url, { redirect: "follow" });
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
-  await pipeline(Readable.fromWeb(res.body), createWriteStream(file));
+async function download(url, file, attempts = 5) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      console.log(`Downloading (attempt ${i}/${attempts})`, url);
+      const res = await fetch(url, { redirect: "follow" });
+      if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+      await pipeline(Readable.fromWeb(res.body), createWriteStream(file));
+      return;
+    } catch (e) {
+      if (i === attempts) throw e;
+      console.warn("  retrying after error:", e.message);
+      await new Promise((r) => setTimeout(r, 15000 * i)); // transient 5xx from the CDN
+    }
+  }
 }
 
 function findFile(dir, name) {
