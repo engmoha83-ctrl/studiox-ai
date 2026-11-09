@@ -10,6 +10,10 @@ on:
       ffmpeg_variant:
         description: "FFmpeg build bundled with the installer (lgpl or gpl)"
         default: "lgpl"
+      build_macos:
+        description: "Also build the macOS app (macOS minutes count 10x in private repos)"
+        type: boolean
+        default: false
 
 jobs:
   test:
@@ -53,6 +57,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: StudioX-AI-windows-x64
+          retention-days: 14 # artifacts count against the 500 MB storage quota of private repos
           path: |
             src-tauri/target/release/bundle/nsis/*.exe
             src-tauri/target/release/bundle/msi/*.msi
@@ -60,6 +65,8 @@ jobs:
 
   macos:
     needs: test
+    # only on demand: macOS runner minutes are billed at 10x for private repositories
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.build_macos == 'true'
     runs-on: macos-latest
     continue-on-error: true # macOS is a future platform; FFmpeg is taken from Homebrew/PATH
     steps:
@@ -72,4 +79,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: StudioX-AI-macos
+          retention-days: 14
           path: src-tauri/target/release/bundle/dmg/*.dmg
