@@ -1,6 +1,6 @@
 [package]
 name = "studiox-ai"
-version = "0.1.2"
+version = "0.1.3"
 description = "STUDIOX AI — professional AI-powered desktop video editor"
 authors = ["StudioX"]
 edition = "2021"

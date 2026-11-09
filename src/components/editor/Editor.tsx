@@ -67,8 +67,9 @@ export default function Editor() {
 
   // Save before the window closes.
   useEffect(() => {
+    // Tauri closes the window after this handler returns (needs core:window:allow-destroy).
     const un = getCurrentWindow().onCloseRequested(async () => {
-      await useProject.getState().saveNow();
+      await Promise.race([useProject.getState().saveNow(), new Promise((r) => setTimeout(r, 3000))]);
     });
     return () => void un.then((f) => f());
   }, []);

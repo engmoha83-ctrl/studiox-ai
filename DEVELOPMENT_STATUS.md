@@ -2,6 +2,9 @@
 
 _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 
+### 0.1.3
+* Window close button did nothing while a project was open: the close handler saves the project, then Tauri must destroy the window, which needed the `core:window:allow-destroy` permission. Fixed (save is capped at 3 s so closing never hangs).
+
 ### Windows feedback round 2 → 0.1.2
 * Preview seek bar added (also in full-screen preview), with hover timecode.
 * Import / export icons corrected (import = arrow into tray, export = arrow out).
