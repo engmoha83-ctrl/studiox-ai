@@ -2,6 +2,10 @@
 
 _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 
+### 0.3.1
+* Fast clips (speed > 2.5× effective) stuttered/flashed "Loading…" in the preview: the decoder couldn't keep up and constant resync seeks blanked the frame. Now fast clips are stepped by seeking, the drift tolerance scales with speed, and the last decoded frame is kept on screen while a decoder seeks or buffers.
+* CI: whisper.cpp download falls back to pinned releases when `latest` lacks the Windows asset.
+
 ### 0.3.0 — Milestone 5 (part 1)
 * `src-tauri/src/ai.rs`: whisper.cpp runner (16 kHz extraction → `whisper-cli -oj -pp -ml -sow [-tr]`, progress events, cancel), model downloads (ureq, `.part` + rename, HTTPS from Hugging Face/GitHub only), Ollama detection/chat (for the assistant).
 * whisper.cpp CLI for Windows is bundled by CI (`npm run fetch-whisper`); models are downloaded by the user.
@@ -61,7 +65,7 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 - [x] Undo/redo (300 steps, named commands, coalesced slider edits), autosave (1.5 s), automatic backups (5 min, 30 kept), named versions
 - [x] English / Arabic UI with full RTL mirroring (timeline & preview stay LTR by design)
 - [x] Keyboard shortcuts (23) + shortcut sheet
-- [x] Application E2E test (tauri-driver/WebDriver): 39/39 checks (incl. drag & drop of templates and transitions)
+- [x] Application E2E test (tauri-driver/WebDriver): 40/40 checks (incl. drag & drop of templates and transitions)
 
 ## Known bugs / limitations
 

@@ -14,18 +14,21 @@ if (process.platform !== "win32" && !process.env.WHISPER_URL) {
   console.log("Prebuilt whisper.cpp is fetched for Windows only. Elsewhere build it (cmake) or install it, then set its folder in Settings → AI models.");
   process.exit(0);
 }
-const url = process.env.WHISPER_URL || "https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip";
+const urls = process.env.WHISPER_URL
+  ? [process.env.WHISPER_URL]
+  : ["latest/download", "download/v1.8.6", "download/v1.8.4", "download/v1.8.2"].map((r) => `https://github.com/ggml-org/whisper.cpp/releases/${r}/whisper-bin-x64.zip`);
 
-async function download(u, file, attempts = 5) {
+async function download(u, file, attempts = 3) {
   for (let i = 1; i <= attempts; i++) {
     try {
       console.log(`Downloading (attempt ${i}/${attempts})`, u);
       const res = await fetch(u, { redirect: "follow" });
+      if (res.status === 404) throw Object.assign(new Error("404 Not Found"), { notFound: true });
       if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
       await pipeline(Readable.fromWeb(res.body), createWriteStream(file));
       return;
     } catch (e) {
-      if (i === attempts) throw e;
+      if (e.notFound || i === attempts) throw e;
       await new Promise((r) => setTimeout(r, 15000 * i));
     }
   }
@@ -36,7 +39,17 @@ rmSync(tmp, { recursive: true, force: true });
 mkdirSync(tmp, { recursive: true });
 mkdirSync(out, { recursive: true });
 const zip = join(tmp, "whisper.zip");
-await download(url, zip);
+let ok = false;
+for (const url of urls) {
+  try {
+    await download(url, zip);
+    ok = true;
+    break;
+  } catch (e) {
+    console.warn("  not available:", url, e.message);
+  }
+}
+if (!ok) throw new Error("Could not download whisper.cpp");
 if (process.platform === "win32") execFileSync("powershell", ["-NoProfile", "-Command", `Expand-Archive -Force '${zip}' '${tmp}'`], { stdio: "inherit" });
 else execFileSync("unzip", ["-q", "-o", zip, "-d", tmp], { stdio: "inherit" });
 const files = walk(tmp).filter((f) => /\.(exe|dll)$/i.test(f) || /whisper-cli$/.test(f));

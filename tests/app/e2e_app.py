@@ -334,6 +334,24 @@ def run(d):
     ph = js(d, "return window.__studiox.ui().playhead")
     check("playback advances the playhead", 1.2 < ph < 4.5, f"{ph:.2f}s")
 
+    # fast clip playback (8x) must not flash the "Loading…" placeholder
+    js(d, "window.__studiox.seek(0)")
+    pa = project(d)
+    ca = next(c for c in pa["clips"].values() if c["type"] == "media" and c["start"] < 0.01 and next(m for m in pa["media"] if m["id"] == c["mediaId"])["name"] == "clip_a.mp4")
+    js(d, "window.__studiox.setSpeed(arguments[0], 4)", ca["id"])
+    time.sleep(0.8)
+    d.find_element(By.TAG_NAME, "body").click()
+    press(d, Keys.SPACE)
+    samples = []
+    for _ in range(8):
+        time.sleep(0.03)
+        samples.append(js(d, """const c=document.querySelector('canvas'); const x=c.getContext('2d');
+          const d=x.getImageData(Math.round(c.width*0.1),Math.round(c.height*0.9),1,1).data; return [d[0],d[1],d[2]];"""))
+    press(d, Keys.SPACE)
+    placeholder = [px for px in samples if px and abs(px[0] - 17) < 6 and abs(px[1] - 24) < 6 and abs(px[2] - 39) < 6]
+    check("4x speed playback shows real frames, never the loading placeholder", not placeholder and all(max(px) > 30 for px in samples[:3]), str(samples))
+    press(d, Keys.CONTROL, "z")
+
     # ---------------------------------------------------------------- M5: subtitles (SRT import → batched export)
     srt = "1\n00:00:00,500 --> 00:00:03,000\nأهلاً بكم في ستوديو إكس\n\n2\n00:00:03,500 --> 00:00:06,000\nWelcome to StudioX\n\n3\n00:00:12,000 --> 00:00:14,000\nشكراً للمشاهدة\n"
     js(d, "window.__studiox.importSubtitles(arguments[0])", srt)
@@ -391,7 +409,7 @@ def run(d):
     time.sleep(1)
     shutil.move(os.path.join(MEDIA, "clip_b.mp4"), os.path.join(MEDIA, "clip_b_moved.mp4"))
     try:
-        d.find_element(By.XPATH, "//*[contains(text(),'E2E')]").click()
+        wait(lambda: d.find_element(By.XPATH, "//*[contains(text(),'E2E')]"), 15).click()
         ok = wait(lambda: d.find_elements(By.XPATH, "//*[contains(text(),'Missing media')]"), 10)
         check("missing media detected and relink dialog shown", ok)
         shot(d, "09-relink")

@@ -20,7 +20,13 @@ interface Decoder {
   el: HTMLMediaElement;
   src: string;
   lastUsed: number;
+  /** last decoded frame, shown while the element seeks / buffers (no flashing) */
+  frame?: HTMLCanvasElement;
+  frameTime?: number;
 }
+
+/** Above this effective rate the decoder can't keep up in real time: step by seeking instead. */
+const SCRUB_RATE = 2.5;
 
 export class PreviewEngine {
   private ctx: CanvasRenderingContext2D;
@@ -218,6 +224,12 @@ export class PreviewEngine {
     if (el.readyState === 0 && !force) return;
     if (this.playing && active) {
       const desired = Math.min(16, Math.max(0.0625, speed * this.rate));
+      if (desired > SCRUB_RATE && el instanceof HTMLVideoElement) {
+        // fast clips (4×, 8×…): show frames by seeking, never stall on a decoder that can't keep up
+        if (!el.paused) el.pause();
+        if (!el.seeking && Math.abs(el.currentTime - target) > 1 / fps) el.currentTime = target;
+        return;
+      }
       if (el.paused) {
         el.currentTime = target;
         el.playbackRate = desired;
@@ -225,7 +237,8 @@ export class PreviewEngine {
         return;
       }
       const drift = el.currentTime - target;
-      if (Math.abs(drift) > 0.3) {
+      // tolerance grows with speed so fast playback doesn't trigger constant resync seeks
+      if (Math.abs(drift) > Math.max(0.3, 0.15 * desired)) {
         el.currentTime = target;
         el.playbackRate = desired;
       } else if (Math.abs(drift) > 0.03) {
@@ -343,10 +356,26 @@ export class PreviewEngine {
       } else {
         const d = this.videos.get(c.id);
         const v = d?.el as HTMLVideoElement | undefined;
-        if (v && v.readyState >= 2 && v.videoWidth) {
+        if (d && v && v.readyState >= 2 && v.videoWidth) {
           src = v;
           sw = v.videoWidth;
           sh = v.videoHeight;
+          // keep a copy of the newest frame for the moments the element is seeking/buffering
+          if (d.frameTime !== v.currentTime) {
+            const fw = Math.min(sw, 1280);
+            const fh = Math.round((sh * fw) / sw);
+            d.frame ??= document.createElement("canvas");
+            if (d.frame.width !== fw || d.frame.height !== fh) {
+              d.frame.width = fw;
+              d.frame.height = fh;
+            }
+            d.frame.getContext("2d")!.drawImage(v, 0, 0, fw, fh);
+            d.frameTime = v.currentTime;
+          }
+        } else if (d?.frame) {
+          src = d.frame;
+          sw = d.frame.width;
+          sh = d.frame.height;
         }
       }
       ctx.save();
