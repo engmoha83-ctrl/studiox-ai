@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { documentDir, homeDir, videoDir } from "@tauri-apps/api/path";
-import { Cpu, Download, FolderOpen, LoaderCircle, TriangleAlert } from "lucide-react";
+import { Cpu, Upload, FolderOpen, LoaderCircle, TriangleAlert } from "lucide-react";
 import { api, errorText } from "../../backend/api";
 import { CONTAINER_AUDIO, CONTAINER_VIDEO, FRAME_RATES, RESOLUTIONS, SOCIAL_PRESETS, codecFamily, defaultExportSettings, isHardwareEncoder, sizeFor, type Container, type ExportSettings } from "../../engine/presets";
 import { projectDuration } from "../../engine/timelineOps";
@@ -115,7 +115,7 @@ export default function ExportDialog() {
             {t("Cancel")}
           </Button>
           <Button variant="primary" disabled={!folder || !name.trim() || duration <= 0 || !videoEncoders.length} onClick={start}>
-            <Download size={15} />
+            <Upload size={15} />
             {batch.length ? t("Export {{n}} versions", { n: batch.length }) : t("Export")}
           </Button>
         </>

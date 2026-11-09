@@ -23,6 +23,55 @@ function Timecode() {
   );
 }
 
+/** Scrubbable progress bar (also used in full-screen preview). */
+function SeekBar() {
+  const playhead = useUi((s) => s.playhead);
+  const project = useProject((s) => s.project)!;
+  const duration = projectDuration(project);
+  const ref = useRef<HTMLDivElement>(null);
+  const [hover, setHover] = useState<number | null>(null);
+  const timeAt = (clientX: number) => {
+    const r = ref.current!.getBoundingClientRect();
+    return Math.min(1, Math.max(0, (clientX - r.left) / r.width)) * duration;
+  };
+  const down = (e: React.PointerEvent) => {
+    if (e.button !== 0 || duration <= 0) return;
+    const wasPlaying = useUi.getState().playing;
+    player.pause();
+    player.seek(timeAt(e.clientX));
+    const move = (ev: PointerEvent) => player.seek(timeAt(ev.clientX));
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      if (wasPlaying) player.play();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const pct = duration > 0 ? Math.min(100, (playhead / duration) * 100) : 0;
+  return (
+    <div
+      ref={ref}
+      data-seekbar
+      className="group relative h-4 shrink-0 cursor-pointer px-0"
+      onPointerDown={down}
+      onPointerMove={(e) => setHover(timeAt(e.clientX))}
+      onPointerLeave={() => setHover(null)}
+      dir="ltr"
+    >
+      <div className="absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-line-2 transition-[height] group-hover:h-1.5">
+        <div className="h-full rounded-full grad-bg" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="absolute top-1/2 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-white shadow" style={{ left: `${pct}%` }} />
+      {hover !== null && duration > 0 && (
+        <div className="pointer-events-none absolute -top-6 -translate-x-1/2 rounded bg-black/90 px-1.5 py-0.5 font-mono text-[10.5px] tabular-nums" style={{ left: `${(hover / duration) * 100}%` }}>
+          {timecode(hover, project.settings.fps)}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SelectionOverlay({ engine, scale }: { engine: PreviewEngine | null; scale: number }) {
   const selection = useUi((s) => s.selection);
   const playhead = useUi((s) => s.playhead);
@@ -165,18 +214,17 @@ export default function PreviewPanel() {
             options={[...ASPECT_PRESETS.map((a) => ({ value: a.id, label: a.label })), ...(aspectId === "custom" ? [{ value: "custom", label: t("Custom") }] : [])]}
           />
         </div>
-        <div className="w-[96px]">
+        <div className="w-[150px]" title={t("Preview render resolution — lower is smoother on slower computers. Export always uses full quality.")}>
           <Select
             value={quality}
             onChange={(q) => {
               set({ previewQuality: q });
               void api.setSetting("previewQuality", String(q));
             }}
-            options={[
-              { value: 1, label: t("Full") },
-              { value: 0.5, label: t("Half") },
-              { value: 0.25, label: t("Quarter") },
-            ]}
+            options={([1, 0.5, 0.25] as const).map((q) => ({
+              value: q,
+              label: `${t(q === 1 ? "Full" : q === 0.5 ? "Half" : "Quarter")} · ${Math.round(project.settings.width * q)}×${Math.round(project.settings.height * q)}`,
+            }))}
           />
         </div>
         <IconBtn tip={t("Safe areas")} active={safe} onClick={() => set({ safeArea: !safe })}>
@@ -197,7 +245,10 @@ export default function PreviewPanel() {
           <SelectionOverlay engine={engine} scale={scale} />
         </div>
       </div>
-      <div className="flex h-11 shrink-0 items-center gap-1 border-t border-line bg-panel px-3" dir="ltr">
+      <div className="shrink-0 border-t border-line bg-panel px-3 pt-1.5">
+        <SeekBar />
+      </div>
+      <div className="flex h-11 shrink-0 items-center gap-1 bg-panel px-3" dir="ltr">
         <Timecode />
         <div className="flex flex-1 items-center justify-center gap-0.5">
           <IconBtn tip={t("Go to start")} shortcut="Home" onClick={() => player.seek(0)}>

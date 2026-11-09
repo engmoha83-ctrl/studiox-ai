@@ -57,7 +57,7 @@ export default function TopBar({ importMedia }: { importMedia: () => void }) {
         <Save size={16} />
       </IconBtn>
       <IconBtn tip={t("Import media")} shortcut="Ctrl+I" onClick={importMedia}>
-        <Upload size={16} />
+        <Download size={16} />
       </IconBtn>
       <div className="flex-1" />
       <span className="me-2 text-[11.5px] text-dim tabular-nums" dir="ltr">
@@ -79,7 +79,7 @@ export default function TopBar({ importMedia }: { importMedia: () => void }) {
         <Settings size={16} />
       </IconBtn>
       <Button variant="primary" className="ms-2" onClick={() => openDialog("export")}>
-        <Download size={15} />
+        <Upload size={15} />
         {t("Export")}
       </Button>
     </header>

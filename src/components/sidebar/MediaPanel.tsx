@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { open as openFile } from "@tauri-apps/plugin-dialog";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
-import { AudioLines, Clock, Folder, FolderPlus, Image as ImageIcon, Link2, LoaderCircle, Plus, RefreshCw, Search, Star, Trash2, TriangleAlert, Upload } from "lucide-react";
+import { AudioLines, Clock, Folder, FolderPlus, Image as ImageIcon, Link2, LoaderCircle, Plus, RefreshCw, Search, Star, Trash2, TriangleAlert, Download } from "lucide-react";
 import { fileUrl } from "../../backend/api";
 import { uid } from "../../lib/id";
 import { formatBytes, shortTime } from "../../lib/time";
@@ -93,7 +93,7 @@ export default function MediaPanel({ importMedia, onlyKind }: { importMedia: () 
       <div className="space-y-2 border-b border-line p-2.5">
         <div className="flex gap-1.5">
           <Button variant="primary" className="flex-1" onClick={importMedia}>
-            <Upload size={14} />
+            <Download size={14} />
             {t("Import")}
           </Button>
           <IconBtn tip={t("New folder")} onClick={newFolder}>
@@ -138,7 +138,7 @@ export default function MediaPanel({ importMedia, onlyKind }: { importMedia: () 
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-2.5">
         {list.length === 0 ? (
-          <Empty icon={onlyKind === "audio" ? <AudioLines size={34} /> : <Upload size={34} />} text={project.media.length ? t("No media matches the filters.") : t("Import or drag video, audio and image files here.")}>
+          <Empty icon={onlyKind === "audio" ? <AudioLines size={34} /> : <Download size={34} />} text={project.media.length ? t("No media matches the filters.") : t("Import or drag video, audio and image files here.")}>
             <Button onClick={importMedia}>{t("Import media")}</Button>
           </Empty>
         ) : (

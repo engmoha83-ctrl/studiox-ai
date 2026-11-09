@@ -239,6 +239,7 @@
  "Preparing…": "جارٍ التحضير…",
  "Preview": "المعاينة",
  "Preview quality": "جودة المعاينة",
+ "Preview render resolution — lower is smoother on slower computers. Export always uses full quality.": "دقة رسم المعاينة — الأقل أنعم على الأجهزة الأبطأ. التصدير يستخدم الجودة الكاملة دائماً.",
  "Previous / next edit point": "نقطة القطع السابقة / التالية",
  "Previous / next frame": "الإطار السابق / التالي",
  "Previous frame": "الإطار السابق",

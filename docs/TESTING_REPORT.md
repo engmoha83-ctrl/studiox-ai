@@ -10,7 +10,7 @@ A 5-layer project (2 video clips incl. a 4:3 MOV at 2× speed with cross dissolv
 * MP4 H.264/AAC (duration 7.0 s ±0.1, pixel checks: video visible, letterboxing correct, dissolve mid-blend, text visible)
 * WebM VP9/Opus, MOV ProRes 422 HQ + PCM with 9:16 letterboxed output, MP4 CBR 1.5 Mb/s (bitrate verified), H.265 (x265), AV1 (SVT-AV1)
 
-## 3. Application E2E — `tests/app/e2e_app.py` (real Tauri app via tauri-driver) — **32/32 pass** (0.1.1 adds: template drag → timeline, transition drag → clip edge)
+## 3. Application E2E — `tests/app/e2e_app.py` (real Tauri app via tauri-driver) — **34/34 pass** (0.1.1 adds: template drag → timeline, transition drag → clip edge)
 
 | # | Check | Result |
 |---|---|---|

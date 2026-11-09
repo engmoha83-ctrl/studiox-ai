@@ -2,6 +2,11 @@
 
 _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 
+### Windows feedback round 2 → 0.1.2
+* Preview seek bar added (also in full-screen preview), with hover timecode.
+* Import / export icons corrected (import = arrow into tray, export = arrow out).
+* Full / Half / Quarter preview quality verified to change the render resolution; the selector now shows the actual size (e.g. "Half · 960×540") so the effect is visible.
+
 ### Windows feedback (0.1.0) and fixes in 0.1.1
 * Import, export, rotate/scale/crop confirmed working on Windows by the user.
 * **Text/transitions could not be dragged onto the timeline on Windows** — WebView2 swallows HTML5 drag events while OS file-drop is enabled. Replaced with a pointer-based in-app drag system (`src/editor/dragdrop.ts`); OS file drop still works.
@@ -41,7 +46,7 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 - [x] Undo/redo (300 steps, named commands, coalesced slider edits), autosave (1.5 s), automatic backups (5 min, 30 kept), named versions
 - [x] English / Arabic UI with full RTL mirroring (timeline & preview stay LTR by design)
 - [x] Keyboard shortcuts (23) + shortcut sheet
-- [x] Application E2E test (tauri-driver/WebDriver): 32/32 checks (incl. drag & drop of templates and transitions)
+- [x] Application E2E test (tauri-driver/WebDriver): 34/34 checks (incl. drag & drop of templates and transitions)
 
 ## Known bugs / limitations
 

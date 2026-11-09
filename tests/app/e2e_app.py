@@ -281,6 +281,26 @@ def run(d):
     check("preview decodes real video frames (testsrc colours)", px and (max(px) - min(px) > 30 or max(px) > 90), str(px))
     shot(d, "05b-video-frame")
 
+    # preview quality really changes the render resolution
+    from selenium.webdriver.support.ui import Select as UiSelect
+    qsel = [e for e in d.find_elements(By.TAG_NAME, "select") if "Quarter" in e.text][0]
+    w_before = js(d, "return document.querySelector('canvas').width")
+    UiSelect(qsel).select_by_index(2)
+    time.sleep(0.6)
+    w_quarter = js(d, "return document.querySelector('canvas').width")
+    UiSelect(qsel).select_by_index(0)
+    time.sleep(0.6)
+    w_full = js(d, "return document.querySelector('canvas').width")
+    check("Full / Quarter preview quality changes the canvas resolution", w_full == 1920 and w_quarter == 480, f"{w_before}->{w_quarter}->{w_full}")
+
+    # seek bar under the preview
+    bar = d.find_element(By.CSS_SELECTOR, "[data-seekbar]")
+    ActionChains(d).move_to_element(bar).click().perform()
+    time.sleep(0.4)
+    dur = max(c["start"] + c["duration"] for c in project(d)["clips"].values())
+    ph = js(d, "return window.__studiox.ui().playhead")
+    check("clicking the preview seek bar seeks to the middle", abs(ph - dur / 2) < dur * 0.06, f"{ph:.2f} of {dur:.2f}")
+
     # playback
     js(d, "window.__studiox.seek(0)")
     d.find_element(By.TAG_NAME, "body").click()
