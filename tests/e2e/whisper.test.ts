@@ -21,8 +21,9 @@ run("whisper.cpp transcription", () => {
     const { cues } = cuesFromWhisper(readFileSync(join(dir, "transcript.json"), "utf8"));
     console.log(toSrt(cues));
     const all = cues.map((c) => c.text).join(" ").toLowerCase();
-    expect(all).toMatch(/hello/);
-    expect(all).toMatch(/test/);
+    // synthetic (espeak) speech + the tiny model: require most of the key words, not every one
+    const words = ["world", "video", "editing", "test", "thank", "watching"];
+    expect(words.filter((w) => all.includes(w)).length).toBeGreaterThanOrEqual(4);
     expect(cues.length).toBeGreaterThan(1);
     for (let i = 1; i < cues.length; i++) expect(cues[i].start).toBeGreaterThanOrEqual(cues[i - 1].start);
   }, 300000);
