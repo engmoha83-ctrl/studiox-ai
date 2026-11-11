@@ -1,6 +1,12 @@
 # STUDIOX AI — Development Status
 
-_Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
+_Last updated: 2026-11-11 — 0.4.0 (Milestone 5 complete)_
+
+### 0.4.0 — Milestone 5 complete
+* **Smart reframe** (`src/engine/reframe.ts`, `src/services/reframe.ts`, Rust `ffmpeg::analyze_focus`): every visual clip is decoded at 4 fps / 128×72 grey; motion (frame difference) + detail (gradient) give a weighted focus point per frame. Focus is held through flat frames, smoothed (weighted moving average) and passed through a dead-zone (8 % of the visible window) so the virtual camera doesn't shake. Result: project size changes (short side kept, e.g. 1920×1080 → 1080×1920), clips get a cover scale and x/y pan keyframes (≤ 40 per axis, linear through continuous pans, eased at starts/stops). Clips the user already positioned/scaled/rotated/animated are skipped. One undo step. Preview and export use the existing keyframe path (identical).
+* **AI editing assistant** (`src/engine/assistantParse.ts`, `src/services/assistant.ts`, `AssistantAI.tsx`): request (Arabic/English) → plan of operations → user approves/unticks → execution, one undo step per operation. Operations: remove silence, split scenes, speed (selection), transitions at cuts, colour look, smart reframe, automatic subtitles, title, open export. Built-in parser works offline (Arabic spelling normalisation, keyword guards). Optional local Ollama model (`/api/chat`, `format: json`) — its output is validated against the same whitelist; on failure it falls back to the built-in parser and says so.
+* Silence removal by the assistant works on the camera audio (and keeps a detached picture in sync); music files are left alone unless the project has no video with sound.
+* Fix: keyboard shortcuts were ignored while the (non-modal) export queue panel was open.
 
 ### 0.3.1
 * Fast clips (speed > 2.5× effective) stuttered/flashed "Loading…" in the preview: the decoder couldn't keep up and constant resync seeks blanked the frame. Now fast clips are stepped by seeking, the drift tolerance scales with speed, and the last decoded frame is kept on screen while a decoder seeks or buffers.
@@ -41,7 +47,7 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 | **M2 Video playback & timeline** | ✅ Complete | Real clips edited on multiple tracks: add, move, trim, split, delete, ripple delete, zoom, undo/redo, synced playback (E2E-tested). |
 | **M3 Basic editing & export** | ✅ Complete | Crop/transform/speed/text/transitions/audio basics; real FFmpeg export with progress produces a playable file whose duration matches the timeline (E2E-tested incl. Arabic text in the rendered file). |
 | **M4 Professional editing** | ✅ Complete (0.2.0) | Keyframes (position, scale, rotation, opacity, volume + 5 easings), colour correction (11 controls, colour wheels, curves, 9 presets, before/after), .cube LUT import with intensity, chroma key, masks (rectangle/ellipse, feather, invert), effects (blur, sharpen, vignette, film grain, cinematic bars), audio mixing (track volume/mute/solo, EQ, compressor, noise reduction, master volume + limiter), proxies. Verified by real-FFmpeg render tests and app E2E. |
-| M5 Local AI | ⏳ In progress (0.3.0) | ✅ silence detection + removal, scene detection + split, **local model manager** (whisper.cpp models: download with progress / cancel / delete, hardware-based recommendation), **automatic subtitles** (whisper.cpp, Arabic/English/auto + translate-to-English, line length), SRT/VTT import & export, batched subtitle rendering (one ffconcat stream per track). ⏳ smart reframing, AI assistant (Ollama + built-in commands). |
+| **M5 Local AI** | ✅ Complete (0.4.0) | Silence detection + removal, scene detection + split, **local model manager** (whisper.cpp models: download with progress / cancel / delete, hardware-based recommendation), **automatic subtitles** (whisper.cpp, Arabic/English/auto + translate-to-English, line length), SRT/VTT import & export, batched subtitle rendering, **smart reframe** (motion/detail tracking → cover + pan keyframes; no face recognition), **AI assistant** (Arabic/English built-in commands offline + optional local Ollama; approval before every change; one undo step per operation). Not verified: Ollama with a real model (tested against a stand-in server). |
 | M6 Advanced AI | ❌ Not started | |
 | M7 Commercial readiness | ⏳ Partial | App icon ✅, crash-safe autosave/backups ✅, automated tests ✅, docs ✅, installer config ✅ (CI). Code signing, profiling, security review: not started. |
 
@@ -81,8 +87,9 @@ _Last updated: session 1 (2026-11-08) — patch 0.1.1 after first Windows test_
 
 ## Next development tasks (in order)
 
-1. M5: smart reframing 16:9 → 9:16 (face/subject detection), AI editing assistant via Ollama using the existing approval workflow.
-4. Backlog from M4: more transitions (FFmpeg xfade family), text keyframes, audio-effects preview through WebAudio, WebCodecs decoder.
+1. M6 Advanced AI: face/subject detection for reframing, background removal, rough cuts from transcripts, B-roll and music suggestions.
+2. Backlog from M5: preview audio for clips faster than 2.5×, subtitles from the assistant use the recommended model only (no model picker in the request).
+3. Backlog from M4: more transitions (FFmpeg xfade family), text keyframes, audio-effects preview through WebAudio, WebCodecs decoder.
 
 ## Continuation instructions (next session)
 

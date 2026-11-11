@@ -14,7 +14,13 @@ A 5-layer project (2 video clips incl. a 4:3 MOV at 2× speed with cross dissolv
 Colour grade via shared LUT (B&W verified by pixel), chroma key (keyed area shows the layer below, foreground kept), position/scale/rotation keyframes (object moves left→right, grows and rotates — pixel-verified), opacity keyframes (fade-in verified), mask + vignette + blur/grain/sharpen/letterbox, audio volume keyframes + EQ + compressor + noise reduction + master limiter (loudness rises as keyed).
 Unit tests now **22/22** (colour LUT, curves, .cube round-trip, keyframe interpolation/expressions, keyframes following split/trim).
 
-## 3. Application E2E — `tests/app/e2e_app.py` (real Tauri app via tauri-driver) — **37/37 pass** (0.1.1 adds: template drag → timeline, transition drag → clip edge)
+## 2c. Milestone 5 tests (0.4.0)
+* Unit (`tests/m5.test.ts`, 14 tests): Arabic normalisation, built-in parser for Arabic/English requests (incl. "احذف الصمت وحوّله لتيك توك"), false-positive guards (تحليل ≠ night, مصدر ≠ export), subtitle language/translation, titles, "professional" macro, LLM output validation (unknown ops dropped, values clamped), reframe size, dead-zone smoothing, cover scale + pan math (subject centred, no black bars, speed mapping), user-positioned clips skipped.
+* Rust (`cargo test --lib`, `ffmpeg::focus_tests`): the motion/detail tracker follows a white box moving across a real encoded video.
+* Real FFmpeg (`tests/e2e/m5.test.ts`): 16:9 → 9:16 reframe with 40 pan keyframes renders; the moving box stays in the centre of the exported frame at 1 s / 2 s / 3 s and the corners show picture (no bars).
+* Whole suite now: **40/40 unit**, **12/12 FFmpeg render** (+1 whisper test that runs in CI), **1/1 Rust**.
+
+## 3. Application E2E — `tests/app/e2e_app.py` (real Tauri app via tauri-driver) — **46/46 pass** in 0.4.0 (table below lists the original 30; later additions: template/transition drag, keyframes, colour preset, preview quality, seek bar, 4× playback, SRT import, AI status, assistant Arabic request → plan → apply → undo per step, Ollama request path via a stand-in server)
 
 | # | Check | Result |
 |---|---|---|
@@ -43,6 +49,7 @@ Unit tests now **22/22** (colour LUT, curves, .cube round-trip, keyframe interpo
 Visual verification (screenshots reviewed): Arabic text "مرحبا بالعالم – Hello ٢٠٢٦" is correctly joined and ordered (RTL with embedded LTR) **in the preview and in frames extracted from the exported MP4**; full Arabic UI is mirrored while the timeline keeps LTR time flow.
 
 ## Bugs found and fixed during testing
+* 0.4.0: **keyboard shortcuts stopped working while the export queue panel was open** (it was counted as a modal dialog) — found by the assistant undo test; fixed.
 * WebKitGTK cannot play `<video>` from custom URI schemes → added the token-protected loopback HTTP media server with Range support (also benefits WebView2/WKWebView).
 * Asset-protocol scope rejected dot-directories (`~/.cache`) → scope set with `requireLiteralLeadingDot: false`; thumbnails now via media server.
 * Tailwind utility clash `bg-clip-text` made text clips invisible on the timeline → colours renamed.
@@ -50,4 +57,4 @@ Visual verification (screenshots reviewed): Arabic text "مرحبا بالعال
 * Export folder empty when the OS has no Videos folder → fallback chain (last used → Videos → Documents → Home).
 
 ## Not tested in this session
-Windows/macOS runtime, hardware encoders on a real GPU, `.sxproj` import/export round-trip in the UI, version restore in the UI, very long (hour-plus) media, 4K/8K performance.
+Ollama with a real language model (only a stand-in server), automatic subtitles inside the assistant flow in the app (whisper is tested on its own in CI), Windows/macOS runtime, hardware encoders on a real GPU, `.sxproj` import/export round-trip in the UI, version restore in the UI, very long (hour-plus) media, 4K/8K performance.

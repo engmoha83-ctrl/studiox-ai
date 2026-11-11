@@ -759,3 +759,94 @@ pub fn detect_scenes(ff: &Ffmpeg, path: &Path, threshold: f64) -> AppResult<Vec<
     }
     Ok(res)
 }
+
+// ---------------------------------------------------------------- saliency tracking (smart reframe)
+
+#[derive(Serialize)]
+pub struct Focus {
+    pub t: f64,
+    pub x: f64,
+    pub y: f64,
+    pub weight: f64,
+}
+
+/// Where is the interesting part of each sampled frame? Motion (frame difference) and detail
+/// (gradient energy) are combined into a weighted centroid. Frames are decoded at 4 fps and
+/// 128×72 grey, streamed (never fully loaded in memory).
+pub fn analyze_focus(ff: &Ffmpeg, path: &Path, start: f64, duration: f64) -> AppResult<Vec<Focus>> {
+    const W: usize = 128;
+    const H: usize = 72;
+    const RATE: f64 = 4.0;
+    let mut child = command(&ff.ffmpeg()?)
+        .args(["-hide_banner", "-loglevel", "error", "-ss", &format!("{start:.3}"), "-t", &format!("{duration:.3}"), "-i"])
+        .arg(path)
+        .args(["-an", "-vf", &format!("fps={RATE},scale={W}:{H}:flags=area,format=gray"), "-f", "rawvideo", "-"])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let mut out = child.stdout.take().unwrap();
+    let mut prev: Option<Vec<u8>> = None;
+    let mut frame = vec![0u8; W * H];
+    let mut res = vec![];
+    let mut i = 0usize;
+    while out.read_exact(&mut frame).is_ok() {
+        let (mut sx, mut sy, mut sw) = (0.0f64, 0.0f64, 0.0f64);
+        for y in 1..H - 1 {
+            for x in 1..W - 1 {
+                let p = frame[y * W + x] as f64;
+                let gx = (frame[y * W + x + 1] as f64 - frame[y * W + x - 1] as f64).abs();
+                let gy = (frame[(y + 1) * W + x] as f64 - frame[(y - 1) * W + x] as f64).abs();
+                let motion = prev.as_ref().map(|q| (p - q[y * W + x] as f64).abs()).unwrap_or(0.0);
+                // motion dominates; detail breaks ties on static shots
+                let w = motion * 3.0 + (gx + gy) * 0.5;
+                sx += w * x as f64;
+                sy += w * y as f64;
+                sw += w;
+            }
+        }
+        if sw > 0.0 {
+            res.push(Focus { t: i as f64 / RATE, x: sx / sw / (W as f64 - 1.0), y: sy / sw / (H as f64 - 1.0), weight: sw / ((W * H) as f64) });
+        } else {
+            res.push(Focus { t: i as f64 / RATE, x: 0.5, y: 0.5, weight: 0.0 });
+        }
+        prev = Some(frame.clone());
+        i += 1;
+    }
+    let _ = child.wait();
+    Ok(res)
+}
+
+#[cfg(test)]
+mod focus_tests {
+    use super::*;
+
+    /// A bright box moving left → right on a dark background must be tracked.
+    #[test]
+    fn tracks_a_moving_box() {
+        let dir = std::env::temp_dir().join(format!("studiox-focus-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let clip = dir.join("move.mp4");
+        let ok = std::process::Command::new("ffmpeg")
+            .args([
+                "-hide_banner", "-loglevel", "error", "-y", "-f", "lavfi", "-i", "color=c=0x202020:s=640x360:r=25:d=4", "-f", "lavfi", "-i", "color=c=white:s=60x60:r=25:d=4",
+                "-filter_complex", "[0][1]overlay=x='40+t*120':y=150,format=yuv420p",
+            ])
+            .arg(&clip)
+            .status();
+        if !matches!(ok, Ok(s) if s.success()) {
+            eprintln!("ffmpeg not available – skipped");
+            return;
+        }
+        let ff = Ffmpeg { ffmpeg: Some("ffmpeg".into()), ffprobe: Some("ffprobe".into()), ..Default::default() };
+        let f = analyze_focus(&ff, &clip, 0.0, 4.0).unwrap();
+        assert!(f.len() >= 14, "samples: {}", f.len());
+        let first = &f[1];
+        let last = &f[f.len() - 1];
+        // box centre: x = 70 + t*120 (of 640) → 0.11 at 0 s, 0.86 at 4 s; y = 180/360 = 0.5
+        assert!(first.x < 0.3, "first x {}", first.x);
+        assert!(last.x > 0.65, "last x {}", last.x);
+        assert!((last.y - 0.5).abs() < 0.1, "y {}", last.y);
+        assert!(f.windows(2).skip(1).all(|w| w[1].x >= w[0].x - 0.03), "monotonic");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

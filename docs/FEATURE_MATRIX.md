@@ -43,7 +43,7 @@
 | | Arabic shaping, RTL, mixed text, Arabic-Indic digits, Arabic fonts, correct in export | ✅ (verified in rendered file) |
 | | Fade / slide animations | ✅ |
 | | Word-level / karaoke, gradients, custom font import | ❌ |
-| | SRT / VTT, automatic captions, translation | ❌ (M5) |
+| | SRT / VTT import + export, automatic captions (whisper.cpp, local), translate-to-English | ✅ (transcription verified in CI with real speech) |
 | Colour (§9) | Exposure, contrast, highlights, shadows, whites, blacks, temperature, tint, saturation, vibrance, hue | ✅ |
 | | Colour wheels (lift/gamma/gain), curves (RGB + R/G/B), presets, before/after | ✅ |
 | | .cube LUT import + intensity | ✅ |
@@ -61,5 +61,8 @@
 | | Background thumbnails / filmstrips / waveforms | ✅ |
 | AI (§4) | Silence detection + approved removal (local) | ✅ |
 | | Scene-change detection + approved split (local) | ✅ (UI path not E2E-tested) |
-| | Whisper transcription, Ollama assistant, model manager, reframing, face/subject tracking, background removal, rough cuts | ❌ (M5/M6) |
+| | Local model manager (whisper.cpp models: download / cancel / delete, hardware recommendation) | ✅ |
+| | Smart reframe 16:9 → 9:16 / 1:1 / 4:5 (and back) following motion + detail; user-positioned clips untouched | ✅ (tracker tested in Rust, render pixel-verified) |
+| | AI editing assistant — Arabic/English built-in commands (offline), optional local Ollama model, plan → approve → one undo step per operation | ✅ (Ollama path tested against a stand-in server, not a real model) |
+| | Face recognition, background removal, rough cuts, B-roll suggestions | ❌ (M6) |
 | Advanced (§12) | Smart timeline inspector, brand kit, templates, custom shortcuts, plugins | ❌ |

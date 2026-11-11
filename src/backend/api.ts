@@ -151,6 +151,7 @@ export const api = {
 
   detectSilence: (path: string, noiseDb: number, minDuration: number) => invoke<{ start: number; end: number }[]>("detect_silence", { path, noiseDb, minDuration }),
   detectScenes: (path: string, threshold: number) => invoke<number[]>("detect_scenes", { path, threshold }),
+  analyzeFocus: (path: string, start: number, duration: number) => invoke<{ t: number; x: number; y: number; weight: number }[]>("analyze_focus", { path, start, duration }),
 
   filesExist: (paths: string[]) => invoke<boolean[]>("files_exist", { paths }),
   findFilesInDir: (dir: string, names: string[]) => invoke<Record<string, string>>("find_files_in_dir", { dir, names }),

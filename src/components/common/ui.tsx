@@ -16,7 +16,9 @@ export function Button({
   className,
   title,
   type = "button",
+  testId,
 }: {
+  testId?: string;
   children: ReactNode;
   onClick?: (e: React.MouseEvent) => void;
   variant?: "default" | "primary" | "ghost" | "danger";
@@ -29,6 +31,7 @@ export function Button({
     <button
       type={type}
       title={title}
+      data-testid={testId}
       disabled={disabled}
       onClick={onClick}
       className={cx(

@@ -18,6 +18,7 @@ export function installTestHooks() {
   (window as unknown as Record<string, unknown>).__studiox = {
     importFiles,
     project: () => useProject.getState().project,
+    history: () => useProject.getState().past.map((e) => e.label).slice(-4),
     ui: () => useUi.getState(),
     app: () => useApp.getState(),
     seek: (t: number) => player.seek(t),

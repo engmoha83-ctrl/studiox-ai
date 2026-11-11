@@ -262,6 +262,12 @@ async fn detect_silence(state: State<'_, AppState>, path: String, noise_db: f64,
 }
 
 #[tauri::command]
+async fn analyze_focus(state: State<'_, AppState>, path: String, start: f64, duration: f64) -> AppResult<Vec<ffmpeg::Focus>> {
+    let ff = state.ff();
+    blocking(move || ffmpeg::analyze_focus(&ff, &PathBuf::from(path), start, duration)).await
+}
+
+#[tauri::command]
 async fn detect_scenes(state: State<'_, AppState>, path: String, threshold: f64) -> AppResult<Vec<f64>> {
     let ff = state.ff();
     blocking(move || ffmpeg::detect_scenes(&ff, &PathBuf::from(path), threshold)).await
@@ -490,6 +496,7 @@ pub fn run() {
             cancel_job,
             detect_silence,
             detect_scenes,
+            analyze_focus,
             files_exist,
             find_files_in_dir,
             read_text_file,

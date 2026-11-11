@@ -92,7 +92,7 @@ export default function AiModels() {
         {t("Models are downloaded once from the whisper.cpp project (Hugging Face) and run entirely on this computer. Storage used: {{s}}.", { s: formatBytes(used) })}
       </p>
       <p className="text-[11px] text-dim">
-        {t("AI assistant (optional)")}: {status?.ollama ? `Ollama ✓ (${status.ollama.length} ${t("models")})` : t("Ollama not detected (optional, for the upcoming AI assistant).")}
+        {t("AI assistant (optional)")}: {status?.ollama ? `Ollama ✓ (${status.ollama.length} ${t("models")})` : t("Ollama not detected (optional, lets the AI assistant understand free-form requests).")}
       </p>
     </Section>
   );

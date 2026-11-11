@@ -43,7 +43,9 @@ export function useShortcuts(opts: { importMedia: () => void; timelineWidth: () 
     const onKey = (e: KeyboardEvent) => {
       const el = e.target as HTMLElement;
       if (el.closest("input,textarea,select,[contenteditable=true]")) return;
-      if (Object.values(useApp.getState().dialogs).some(Boolean) && e.key !== "Escape") return;
+      // modal dialogs block shortcuts; the export queue is a floating, non-modal panel
+      const { queue: _queue, ...modals } = useApp.getState().dialogs;
+      if (Object.values(modals).some(Boolean) && e.key !== "Escape") return;
       const ctrl = e.ctrlKey || e.metaKey;
       const k = e.key;
       const ui = useUi.getState();

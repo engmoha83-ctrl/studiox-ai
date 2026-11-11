@@ -9,7 +9,8 @@ Covers: project creation, media import (+ automatic proxy), timeline editing
 playback, real FFmpeg export (verified with ffprobe + frame grabs),
 save/reopen, missing-media relink detection, Arabic RTL UI.
 """
-import json, os, shutil, subprocess, sys, time
+import json
+import threading, os, shutil, subprocess, sys, time
 from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
@@ -86,6 +87,40 @@ def press(d, *keys):
     time.sleep(0.35)
 
 
+class FakeOllama(threading.Thread):
+    """Minimal stand-in for a local Ollama server (127.0.0.1:11434) – checks the app's request/response path."""
+    requests = []
+
+    def run(self):
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+
+        outer = self
+
+        class H(BaseHTTPRequestHandler):
+            def log_message(self, *a):
+                pass
+
+            def reply(self, obj):
+                body = json.dumps(obj).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def do_GET(self):
+                self.reply({"models": [{"name": "mock-llm"}]})
+
+            def do_POST(self):
+                req = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+                outer.requests.append(req)
+                ops_ = {"operations": [{"op": "color", "preset": "warm"}, {"op": "format_disk"}]}
+                self.reply({"message": {"role": "assistant", "content": json.dumps(ops_)}})
+
+        self.server = HTTPServer(("127.0.0.1", 11434), H)
+        self.server.serve_forever()
+
+
 def main():
     caps = ArgOptions()
     caps.set_capability("tauri:options", {"application": APP})
@@ -112,7 +147,7 @@ def run(d):
     wait(lambda: d.find_element(By.XPATH, "//*[contains(text(),'STUDIOX')]"), 30)
     js(d, "localStorage.setItem('studiox:e2e','1'); location.reload();")
     wait(lambda: js(d, "return !!window.__studiox"), 30)
-    check("app boots and shows home screen", d.find_elements(By.XPATH, "//*[contains(text(),'New project')]"))
+    check("app boots and shows home screen", wait(lambda: d.find_elements(By.XPATH, "//*[contains(text(),'New project')]"), 20))
     shot(d, "01-home")
     xclick(d, "New project")
     name_in = wait(lambda: d.find_element(By.CSS_SELECTOR, ".fixed input[dir=auto]"))
@@ -393,6 +428,58 @@ def run(d):
         check("exported file carries the colour grade (B&W)", max(grey) - min(grey) < 16, str(list(grey)))
         for t in (1.5, 4.0, 12.3, 13.0):
             subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(t), "-i", out_file, "-frames:v", "1", os.path.join(OUT, f"export-frame-{t}.png")])
+
+    # ---------------------------------------------------------------- M5: AI assistant + smart reframe
+    js(d, "window.__studiox.ui().set({ leftTab: 'ai' })")
+    bw = lambda: len([c for c in project(d)["clips"].values() if c["type"] == "media" and c.get("color") and c["color"]["saturation"] == -1])
+    bw_before = bw()
+    box = wait(lambda: d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-input]"), 10)
+    box.send_keys("خليه أبيض وأسود وحوّله لتيك توك")
+    d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-ask]").click()
+    plan_el = wait(lambda: d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-plan]"), 10)
+    items = plan_el.find_elements(By.CSS_SELECTOR, "li") if plan_el else []
+    check("assistant proposes 2 steps for an Arabic request (nothing applied yet)", len(items) == 2 and project(d)["settings"]["width"] == 1920, plan_el.text if plan_el else "")
+    shot(d, "07b-assistant-plan")
+    d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-apply]").click()
+    ok = wait(lambda: d.find_elements(By.CSS_SELECTOR, "[data-testid=assistant-results]"), 120, 0.5)
+    s_ = project(d)["settings"]
+    main = [c for c in project(d)["clips"].values() if c["type"] == "media" and c["transform"]["scale"] > 1.5]
+    logo_after = [c for c in project(d)["clips"].values() if c["type"] == "media" and abs(c["transform"]["scale"] - 0.25) < 0.01]
+    check("assistant applied: canvas 1080×1920, footage fills the frame, positioned logo untouched", ok and s_["width"] == 1080 and s_["height"] == 1920 and main and logo_after,
+          f'{s_["width"]}x{s_["height"]} main={len(main)} logo={len(logo_after)}')
+    check("assistant applied the B&W look to the video clips", bw() > bw_before, f"{bw_before} -> {bw()}")
+    shot(d, "07c-assistant-applied")
+    js(d, "document.activeElement && document.activeElement.blur()")  # WebKit keeps focus in the textarea after a button click
+    press(d, Keys.CONTROL, "z")
+    time.sleep(0.4)
+    # (the export queue panel is still open here: shortcuts must keep working with it)
+    check("assistant steps undo one by one (reframe first)", project(d)["settings"]["width"] == 1920 and bw() > bw_before)
+    press(d, Keys.CONTROL, "z")
+    time.sleep(0.4)
+    check("second undo removes the colour step", bw() == bw_before)
+    js(d, "window.__studiox.ui().set({ leftTab: 'media' })")
+
+    # optional local LLM path (fake Ollama server): free-form request → validated operations
+    fake = FakeOllama(daemon=True)
+    fake.start()
+    time.sleep(0.5)
+    js(d, "window.__studiox.ui().set({ leftTab: 'ai' })")
+    st = js(d, "return window.__studiox.aiStatus()")
+    sel = wait(lambda: [e for e in d.find_elements(By.CSS_SELECTOR, "select") if "mock-llm" in e.get_attribute("innerHTML")], 10)
+    if sel:
+        js(d, "const s=arguments[0]; const set=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set; set.call(s,'mock-llm'); s.dispatchEvent(new Event('change',{bubbles:true}));", sel[0])
+    box = d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-input]")
+    js(d, "arguments[0].select()", box)
+    box.send_keys("give it a cozy feeling")
+    d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-ask]").click()
+    plan_el = wait(lambda: d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-plan]"), 15)
+    txt = plan_el.text if plan_el else ""
+    check("Ollama model listed and its proposal validated (unknown ops dropped)", st and st.get("ollama") == ["mock-llm"] and "mock-llm" in txt and "Warm" in txt and len(plan_el.find_elements(By.CSS_SELECTOR, "li")) == 1
+          and fake.requests and fake.requests[-1]["format"] == "json" and "removeSilence" in fake.requests[-1]["messages"][0]["content"], txt.replace("\n", " | "))
+    shot(d, "07d-assistant-ollama")
+    xclick(d, "Discard")
+    fake.server.shutdown()
+    js(d, "window.__studiox.ui().set({ leftTab: 'media' })")
 
     # ---------------------------------------------------------------- persistence
     pid = project(d)["id"]
