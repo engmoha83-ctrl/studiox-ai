@@ -112,7 +112,7 @@ export interface AiStatus {
 }
 export interface AiProgress {
   id: string;
-  kind: "download" | "transcribe";
+  kind: "download" | "transcribe" | "faces";
   progress: number;
   received: number;
   total: number;
@@ -151,6 +151,8 @@ export const api = {
 
   detectSilence: (path: string, noiseDb: number, minDuration: number) => invoke<{ start: number; end: number }[]>("detect_silence", { path, noiseDb, minDuration }),
   detectScenes: (path: string, threshold: number) => invoke<number[]>("detect_scenes", { path, threshold }),
+  analyzeFaces: (jobId: string, path: string, start: number, duration: number, rate: number) =>
+    invoke<{ t: number; faces: { x: number; y: number; w: number; h: number; score: number }[] }[]>("analyze_faces", { jobId, path, start, duration, rate }),
   analyzeFocus: (path: string, start: number, duration: number) => invoke<{ t: number; x: number; y: number; weight: number }[]>("analyze_focus", { path, start, duration }),
 
   filesExist: (paths: string[]) => invoke<boolean[]>("files_exist", { paths }),

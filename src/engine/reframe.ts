@@ -117,7 +117,8 @@ export function reframeClip(c: MediaClip, m: Pick<MediaAsset, "width" | "height"
     return clamp((c.transform.flipV ? 1 : -1) * u * dh, maxY);
   };
   // dead-zone = 8% of the visible window, so the camera reacts at a sensible on-screen distance
-  const smooth = smoothFocus(samples, 4, 0.08 * Math.min(W / dw, H / dh));
+  const rate = samples.length > 1 ? 1 / Math.max(1e-3, samples[1].t - samples[0].t) : 4;
+  const smooth = smoothFocus(samples, Math.max(1, Math.round(rate)), 0.08 * Math.min(W / dw, H / dh));
   if (!smooth.length) return { scale, x: 0, y: 0 };
 
   // resample on a regular clip-local grid (source t → timeline t is t / speed)

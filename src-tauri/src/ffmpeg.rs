@@ -780,7 +780,7 @@ pub fn analyze_focus(ff: &Ffmpeg, path: &Path, start: f64, duration: f64) -> App
     let mut child = command(&ff.ffmpeg()?)
         .args(["-hide_banner", "-loglevel", "error", "-ss", &format!("{start:.3}"), "-t", &format!("{duration:.3}"), "-i"])
         .arg(path)
-        .args(["-an", "-vf", &format!("fps={RATE},scale={W}:{H}:flags=area,format=gray"), "-f", "rawvideo", "-"])
+        .args(["-an", "-vf", &format!("fps={RATE}:round=up,scale={W}:{H}:flags=area,format=gray"), "-f", "rawvideo", "-"])
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
         .spawn()?;

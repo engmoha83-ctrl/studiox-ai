@@ -23,7 +23,7 @@ export default function ReframeAI() {
     setPlan(null);
     setProgress(t("Analysing…"));
     try {
-      setPlan(await planReframe(a, (d, n) => setProgress(t("Tracking the subject… {{d}}/{{n}}", { d, n }))));
+      setPlan(await planReframe(a, (d, n, sub) => setProgress(t("Tracking the subject… {{d}}/{{n}}", { d: Math.min(n, d + 1), n }) + (sub !== undefined ? ` ${Math.round(sub * 100)}%` : ""))));
     } catch (e) {
       toast(errorText(e), "error");
     } finally {
@@ -48,7 +48,7 @@ export default function ReframeAI() {
         {progress ? <LoaderCircle size={14} className="animate-spin" /> : <ScanSearch size={14} />}
         {progress ?? (same ? t("The project already has this format") : t("Analyse and suggest"))}
       </Button>
-      <p className="text-[10.5px] text-dim">{t("Follows motion and detail in each shot (no face recognition). Clips you already moved or scaled are left as they are.")}</p>
+      <p className="text-[10.5px] text-dim">{t("Keeps the main person's face in frame (detected on this computer); shots without people follow motion and detail. Clips you already moved or scaled are left as they are.")}</p>
       {plan && (
         <div className="anim-in rounded-lg border border-accent/40 bg-accent/10 p-2.5" data-testid="reframe-plan">
           <div className="mb-1 font-semibold">{t("Suggested change")}</div>
@@ -62,6 +62,7 @@ export default function ReframeAI() {
               k: plan.tracked,
             })}
           </p>
+          {plan.faces > 0 && <p className="mt-1 text-[11px] text-teal-100">{t("{{n}} clips framed on a detected face", { n: plan.faces })}</p>}
           {plan.skipped.length > 0 && <p className="mt-1 text-[11px] text-amber-200">{t("{{n}} positioned clips left as they were", { n: plan.skipped.length })}</p>}
           <div className="mt-2.5 flex gap-2">
             <Button variant="primary" className="flex-1" testId="reframe-apply" onClick={apply}>

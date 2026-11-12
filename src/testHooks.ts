@@ -5,7 +5,7 @@ import { useProject } from "./store/projectStore";
 import { useUi } from "./store/uiStore";
 import { useApp } from "./store/appStore";
 import { player } from "./preview/player";
-import { setSpeed } from "./editor/actions";
+import { addMediaToTimeline, setSpeed } from "./editor/actions";
 import { parseSubtitles } from "./engine/subtitles";
 import { addSubtitleTrack, refreshAiStatus, useAi } from "./services/ai";
 
@@ -24,6 +24,11 @@ export function installTestHooks() {
     seek: (t: number) => player.seek(t),
     select: (ids: string[]) => useUi.getState().select(ids),
     setSpeed: (id: string, v: number) => setSpeed(id, v),
+    addToTimeline: (mediaId: string, at: number, trackId?: string) => {
+      const m = useProject.getState().project?.media.find((x) => x.id === mediaId);
+      if (m) addMediaToTimeline(m, at, trackId);
+      return useUi.getState().selection[0];
+    },
     importSubtitles: (text: string) => addSubtitleTrack(parseSubtitles(text)),
     aiStatus: async () => (await refreshAiStatus(), useAi.getState().status),
   };

@@ -20,6 +20,12 @@ Unit tests now **22/22** (colour LUT, curves, .cube round-trip, keyframe interpo
 * Real FFmpeg (`tests/e2e/m5.test.ts`): 16:9 → 9:16 reframe with 40 pan keyframes renders; the moving box stays in the centre of the exported frame at 1 s / 2 s / 3 s and the corners show picture (no bars).
 * Whole suite now: **40/40 unit**, **12/12 FFmpeg render** (+1 whisper test that runs in CI), **1/1 Rust**.
 
+## 2d. Milestone 6 part 1 tests (0.5.0)
+* Rust: YuNet on the standard OpenCV sample portrait gives the same box as OpenCV `FaceDetectorYN` (±6 px); a face moving across a 1280×720 video is found in all 8 sampled frames within 30 px of its true position; a flat image has no faces. (The test portrait is not committed; tests skip without it — set `STUDIOX_FACE_FIXTURE`.)
+* Unit: main-person tracking ignores a passer-by, holds through missed frames, switches to a dominant new face; keyframe simplification; overlay offset/scale follow maths.
+* Real FFmpeg: a red sticker following a swinging "face" with 17+ keyframes sits on the face at 4 sampled times — this test exposed a one-frame lead in exported keyframe animation (fixed).
+* App E2E **48/48**: sticker follows a real detected face at ≈300 px/s on the canvas; smart reframe reports "1 clip framed on a detected face" and pans with it.
+
 ## 3. Application E2E — `tests/app/e2e_app.py` (real Tauri app via tauri-driver) — **46/46 pass** in 0.4.0 (table below lists the original 30; later additions: template/transition drag, keyframes, colour preset, preview quality, seek bar, 4× playback, SRT import, AI status, assistant Arabic request → plan → apply → undo per step, Ollama request path via a stand-in server)
 
 | # | Check | Result |

@@ -1,6 +1,13 @@
 # STUDIOX AI — Development Status
 
-_Last updated: 2026-11-11 — 0.4.0 (Milestone 5 complete)_
+_Last updated: 2026-11-12 — 0.5.0 (Milestone 6 part 1: face tracking)_
+
+### 0.5.0 — Milestone 6 (part 1): subject tracking
+* **Face detection** (`src-tauri/src/vision.rs`): YuNet (MIT, OpenCV Zoo, 230 KB) embedded in the binary and run with **tract** (pure-Rust ONNX inference — no runtime to install). Frames are letter-boxed into 640×640; decoding/NMS follow OpenCV's `FaceDetectorYN` and the boxes match OpenCV within a few pixels. ~50 ms per analysed frame in release builds (CPU, test machine).
+* **Smart reframe now frames people:** if a face is visible in ≥ 30 % of a clip's frames, the camera follows the main person (`primaryFaceTrack`: sticks to one person, ignores passers-by, switches only when a clearly bigger face stays for 3 samples); otherwise motion/detail tracking as before.
+* **Follow a face** (AI panel): a sticker / logo / picture-in-picture clip follows the main face in the video below it, keeping the offset the user gave it (e.g. above the head), optionally scaling with the face. Result = editable x/y(/scale) keyframes, simplified with Ramer–Douglas–Peucker (2 px tolerance).
+* **Fix (export, since 0.2.0):** animated position/scale/rotation was one frame early in exported files — FFmpeg's `perspective` filter counts frames from 1. Found by the new follow-face render test (a fast-moving sticker was 20–25 px ahead); expressions now use `(in-1)/fps`.
+* Analysis frames are sampled with `fps=…:round=up` so sample *i* is exactly at *i / rate* (the default rounding shifted samples by half an interval).
 
 ### 0.4.0 — Milestone 5 complete
 * **Smart reframe** (`src/engine/reframe.ts`, `src/services/reframe.ts`, Rust `ffmpeg::analyze_focus`): every visual clip is decoded at 4 fps / 128×72 grey; motion (frame difference) + detail (gradient) give a weighted focus point per frame. Focus is held through flat frames, smoothed (weighted moving average) and passed through a dead-zone (8 % of the visible window) so the virtual camera doesn't shake. Result: project size changes (short side kept, e.g. 1920×1080 → 1080×1920), clips get a cover scale and x/y pan keyframes (≤ 40 per axis, linear through continuous pans, eased at starts/stops). Clips the user already positioned/scaled/rotated/animated are skipped. One undo step. Preview and export use the existing keyframe path (identical).
@@ -48,7 +55,7 @@ _Last updated: 2026-11-11 — 0.4.0 (Milestone 5 complete)_
 | **M3 Basic editing & export** | ✅ Complete | Crop/transform/speed/text/transitions/audio basics; real FFmpeg export with progress produces a playable file whose duration matches the timeline (E2E-tested incl. Arabic text in the rendered file). |
 | **M4 Professional editing** | ✅ Complete (0.2.0) | Keyframes (position, scale, rotation, opacity, volume + 5 easings), colour correction (11 controls, colour wheels, curves, 9 presets, before/after), .cube LUT import with intensity, chroma key, masks (rectangle/ellipse, feather, invert), effects (blur, sharpen, vignette, film grain, cinematic bars), audio mixing (track volume/mute/solo, EQ, compressor, noise reduction, master volume + limiter), proxies. Verified by real-FFmpeg render tests and app E2E. |
 | **M5 Local AI** | ✅ Complete (0.4.0) | Silence detection + removal, scene detection + split, **local model manager** (whisper.cpp models: download with progress / cancel / delete, hardware-based recommendation), **automatic subtitles** (whisper.cpp, Arabic/English/auto + translate-to-English, line length), SRT/VTT import & export, batched subtitle rendering, **smart reframe** (motion/detail tracking → cover + pan keyframes; no face recognition), **AI assistant** (Arabic/English built-in commands offline + optional local Ollama; approval before every change; one undo step per operation). Not verified: Ollama with a real model (tested against a stand-in server). |
-| M6 Advanced AI | ❌ Not started | |
+| **M6 Advanced AI** | ⏳ In progress (0.5.0) | ✅ subject tracking (local face detection → reframe on people, overlays follow a face). ⏳ smart scene selection, AI rough cuts, automatic editing (styles, target duration), background removal, optional external AI providers. |
 | M7 Commercial readiness | ⏳ Partial | App icon ✅, crash-safe autosave/backups ✅, automated tests ✅, docs ✅, installer config ✅ (CI). Code signing, profiling, security review: not started. |
 
 ## Implementation checklist (done)
@@ -87,7 +94,7 @@ _Last updated: 2026-11-11 — 0.4.0 (Milestone 5 complete)_
 
 ## Next development tasks (in order)
 
-1. M6 Advanced AI: face/subject detection for reframing, background removal, rough cuts from transcripts, B-roll and music suggestions.
+1. M6 (in order): smart scene selection (quality/face/speech/duplicate scoring), AI rough cuts from transcripts, automatic editing (style + target duration + aspect → editable draft), background removal (licence-clean model), optional external AI providers (off by default).
 2. Backlog from M5: preview audio for clips faster than 2.5×, subtitles from the assistant use the recommended model only (no model picker in the request).
 3. Backlog from M4: more transitions (FFmpeg xfade family), text keyframes, audio-effects preview through WebAudio, WebCodecs decoder.
 

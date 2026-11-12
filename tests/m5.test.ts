@@ -151,3 +151,59 @@ describe("smart reframe", () => {
     expect(canReframe(makeMediaClip(media("a", "audio", 5), v1, 0, 30), media("a", "audio", 5))).toBe(false);
   });
 });
+
+// ------------------------------------------------------------------ M6 part 1: faces
+import { faceCoverage, followFace, primaryFaceTrack, simplify, type FaceFrame } from "../src/engine/faces";
+
+const face = (cx: number, cy: number, w: number, score = 0.9) => ({ x: cx - w / 2, y: cy - w / 2, w, h: w, score });
+
+describe("face tracking", () => {
+  it("follows one person and ignores a passer-by", () => {
+    const frames: FaceFrame[] = Array.from({ length: 10 }, (_, i) => ({
+      t: i / 2,
+      faces: [face(0.3 + i * 0.02, 0.4, 0.12), ...(i === 4 ? [face(0.8, 0.5, 0.13)] : [])],
+    }));
+    const tr = primaryFaceTrack(frames);
+    expect(tr.every((s) => s.x < 0.6)).toBe(true);
+    expect(tr[9].x).toBeCloseTo(0.48, 2);
+    expect(faceCoverage(frames)).toBe(1);
+  });
+
+  it("holds the last position when the face disappears, switches to a dominant new face that stays", () => {
+    const frames: FaceFrame[] = [
+      { t: 0, faces: [face(0.3, 0.4, 0.1)] },
+      { t: 0.5, faces: [] },
+      ...Array.from({ length: 5 }, (_, i) => ({ t: 1 + i / 2, faces: [face(0.3, 0.4, 0.1), face(0.7, 0.5, 0.3)] })),
+    ];
+    const tr = primaryFaceTrack(frames);
+    expect(tr[1]).toMatchObject({ weight: 0, x: 0.3 });
+    expect(tr[2].x).toBeCloseTo(0.3);
+    expect(tr[tr.length - 1].x).toBeCloseTo(0.7); // after 3 frames of a much bigger face
+    expect(faceCoverage(frames)).toBeCloseTo(6 / 7);
+  });
+
+  it("simplify keeps corners and drops collinear points", () => {
+    const pts = [0, 1, 2, 3, 4, 5, 6].map((t) => ({ t, v: t < 3 ? t * 10 : 30 }));
+    expect(simplify(pts, 0.5).map((p) => p.t)).toEqual([0, 3, 6]);
+  });
+
+  it("an overlay keeps its offset from the face and scales with it", () => {
+    const { v1, v2 } = setup();
+    const m = media("v", "video", 10, "/v", 1920, 1080);
+    const base = makeMediaClip(m, v1, 0, 30);
+    base.duration = 4;
+    const ov = makeMediaClip(media("logo", "image", 0, "/l", 200, 200), v2, 0, 30);
+    ov.duration = 4;
+    // project 1920×1080, base fills it. Face starts at the centre, moves right 0.25 of the width.
+    const frames: FaceFrame[] = Array.from({ length: 17 }, (_, i) => ({ t: i / 4, faces: [face(0.5 + (0.25 * i) / 16, 0.5, 0.1 + (0.1 * i) / 16)] }));
+    ov.transform.x = 0;
+    ov.transform.y = -150; // placed 150 px above the face
+    const r = followFace(ov, base, m, 1920, 1080, frames, 0, true)!;
+    expect(r.found).toBe(17);
+    const end = (k: { t: number; v: number }[]) => k[k.length - 1].v;
+    expect(end(r.x)).toBeCloseTo(0.25 * 1920, -1); // followed the face to the right
+    expect(end(r.scale!)).toBeCloseTo(2, 1); // face doubled in size
+    expect(end(r.y)).toBeCloseTo(-300, -1); // offset grows with the face
+    expect(r.x.length).toBeLessThan(6); // straight motion → few keyframes
+  });
+});

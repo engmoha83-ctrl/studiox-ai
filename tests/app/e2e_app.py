@@ -472,8 +472,8 @@ def run(d):
     js(d, "arguments[0].select()", box)
     box.send_keys("give it a cozy feeling")
     d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-ask]").click()
-    plan_el = wait(lambda: d.find_element(By.CSS_SELECTOR, "[data-testid=assistant-plan]"), 15)
-    txt = plan_el.text if plan_el else ""
+    plan_el = wait(lambda: next((e for e in d.find_elements(By.CSS_SELECTOR, "[data-testid=assistant-plan]") if "mock-llm" in e.text), None), 30)
+    txt = plan_el.text if plan_el else f"no plan; requests={len(fake.requests)} status={json.dumps(st)[:120]}"
     check("Ollama model listed and its proposal validated (unknown ops dropped)", st and st.get("ollama") == ["mock-llm"] and "mock-llm" in txt and "Warm" in txt and len(plan_el.find_elements(By.CSS_SELECTOR, "li")) == 1
           and fake.requests and fake.requests[-1]["format"] == "json" and "removeSilence" in fake.requests[-1]["messages"][0]["content"], txt.replace("\n", " | "))
     shot(d, "07d-assistant-ollama")
@@ -503,6 +503,53 @@ def run(d):
     finally:
         shutil.move(os.path.join(MEDIA, "clip_b_moved.mp4"), os.path.join(MEDIA, "clip_b.mp4"))
     press(d, Keys.ESCAPE)
+
+    # ---------------------------------------------------------------- M6: face tracking (needs the face fixture)
+    fixture = os.environ.get("STUDIOX_FACE_FIXTURE", "/tmp/dl/lena.jpg")
+    if os.path.isfile(fixture):
+        face_mp4 = os.path.join(MEDIA, "face.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "color=c=0x404040:s=1280x720:r=25:d=4", "-loop", "1", "-i", fixture,
+                        "-filter_complex", "[1]scale=300:300[f];[0][f]overlay=x='100+200*t':y=200:shortest=1,format=yuv420p", face_mp4], check=True)
+        js(d, "return window.__studiox.importFiles([arguments[0]])", face_mp4)
+        fm = wait(lambda: next((m for m in project(d)["media"] if m["name"] == "face.mp4" and m.get("width")), None), 30)
+        logo_m = next(m for m in project(d)["media"] if m["name"] == "logo.png")
+        end = max(c["start"] + c["duration"] for c in project(d)["clips"].values()) + 1
+        vids = [t_ for t_ in project(d)["tracks"] if t_["kind"] == "video"]
+        js(d, "return window.__studiox.addToTimeline(arguments[0], arguments[1], arguments[2])", fm["id"], end, vids[-1]["id"])
+        sticker = js(d, "return window.__studiox.addToTimeline(arguments[0], arguments[1], arguments[2])", logo_m["id"], end, vids[0]["id"])
+        js(d, "window.__studiox.select([arguments[0]]); window.__studiox.ui().set({ leftTab: 'ai' })", sticker)
+        btn = wait(lambda: d.find_element(By.CSS_SELECTOR, "[data-testid=follow-run]"), 10)
+        js(d, "arguments[0].scrollIntoView()", btn)
+        btn.click()
+        plan_el = wait(lambda: d.find_element(By.CSS_SELECTOR, "[data-testid=follow-plan]"), 120, 0.5)
+        shot(d, "09b-follow-face-plan")
+        if plan_el:
+            d.find_element(By.CSS_SELECTOR, "[data-testid=follow-apply]").click()
+            time.sleep(0.5)
+        kx = (project(d)["clips"][sticker].get("keyframes") or {}).get("x", [])
+        slope = (kx[-1]["v"] - kx[0]["v"]) / max(1e-6, kx[-1]["t"] - kx[0]["t"]) if len(kx) >= 2 else 0
+        # face moves 200 px/s in the 1280-wide source = 300 px/s on the 1920-wide canvas
+        check("sticker follows the detected face (≈300 px/s on the canvas)", 260 < slope < 340,
+              str([(round(k["t"], 2), round(k["v"])) for k in kx][:6]))
+        js(d, "document.activeElement && document.activeElement.blur()")
+        press(d, Keys.CONTROL, "z")
+        # smart reframe frames the face clip on the face (other clips have no faces → motion)
+        btn = d.find_element(By.CSS_SELECTOR, "[data-testid=reframe-analyse]")
+        js(d, "arguments[0].scrollIntoView()", btn)
+        btn.click()
+        plan_el = wait(lambda: d.find_element(By.CSS_SELECTOR, "[data-testid=reframe-plan]"), 240, 1)
+        txt = plan_el.text if plan_el else ""
+        shot(d, "09c-reframe-faces-plan")
+        if plan_el:
+            d.find_element(By.CSS_SELECTOR, "[data-testid=reframe-apply]").click()
+            time.sleep(0.5)
+        face_clip = next(c for c in project(d)["clips"].values() if c["type"] == "media" and c["mediaId"] == fm["id"])
+        fx = (face_clip.get("keyframes") or {}).get("x", [])
+        check("smart reframe uses the detected face (1 clip framed on a face, camera pans with it)", "1 clips framed on a detected face" in txt and len(fx) >= 2 and fx[-1]["v"] < fx[0]["v"] - 300,
+              txt.replace("\n", " | ")[:300] + " " + str([(round(k["t"], 2), round(k["v"])) for k in fx][:5]))
+        js(d, "document.activeElement && document.activeElement.blur()")
+        press(d, Keys.CONTROL, "z")
+        js(d, "window.__studiox.ui().set({ leftTab: 'media' })")
 
     # ---------------------------------------------------------------- Arabic UI
     lang_btn = d.find_element(By.CSS_SELECTOR, "button[aria-label='العربية']")

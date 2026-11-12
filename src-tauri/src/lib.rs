@@ -5,6 +5,7 @@ mod ffmpeg;
 mod files;
 mod media_server;
 mod system;
+mod vision;
 
 use base64::Engine;
 use error::{msg, AppResult};
@@ -267,6 +268,38 @@ async fn analyze_focus(state: State<'_, AppState>, path: String, start: f64, dur
     blocking(move || ffmpeg::analyze_focus(&ff, &PathBuf::from(path), start, duration)).await
 }
 
+#[derive(Serialize, Clone)]
+struct VisionProgress {
+    id: String,
+    kind: &'static str,
+    progress: f64,
+    received: u64,
+    total: u64,
+}
+
+/// Face detection over a source range (local YuNet model). Progress: `ai-progress` kind "faces".
+#[tauri::command]
+async fn analyze_faces(app: AppHandle, state: State<'_, AppState>, job_id: String, path: String, start: f64, duration: f64, rate: f64) -> AppResult<Vec<vision::FaceFrame>> {
+    use tauri::Emitter;
+    let ff = state.ff();
+    let flag = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    state.ai_cancels.lock().unwrap().insert(job_id.clone(), flag.clone());
+    let cancels = state.ai_cancels.clone();
+    let id = job_id.clone();
+    let res = blocking(move || {
+        let mut last = -1.0;
+        vision::analyze_faces(&ff, &PathBuf::from(path), start, duration, rate.clamp(0.5, 8.0), Some(flag), |p| {
+            if p - last >= 0.02 || p >= 1.0 {
+                last = p;
+                let _ = app.emit("ai-progress", VisionProgress { id: id.clone(), kind: "faces", progress: p, received: 0, total: 0 });
+            }
+        })
+    })
+    .await;
+    cancels.lock().unwrap().remove(&job_id);
+    res
+}
+
 #[tauri::command]
 async fn detect_scenes(state: State<'_, AppState>, path: String, threshold: f64) -> AppResult<Vec<f64>> {
     let ff = state.ff();
@@ -497,6 +530,7 @@ pub fn run() {
             detect_silence,
             detect_scenes,
             analyze_focus,
+            analyze_faces,
             files_exist,
             find_files_in_dir,
             read_text_file,

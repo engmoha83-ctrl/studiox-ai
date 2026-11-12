@@ -12,6 +12,7 @@ import { Button, NumberField, Row, Section } from "../common/ui";
 import SubtitlesAI from "./SubtitlesAI";
 import AssistantAI from "./AssistantAI";
 import ReframeAI from "./ReframeAI";
+import FollowFaceAI from "./FollowFaceAI";
 
 interface Proposal {
   kind: "silence" | "scenes";
@@ -111,6 +112,7 @@ export default function AIPanel() {
       <AssistantAI />
       <SubtitlesAI />
       <ReframeAI />
+      <FollowFaceAI />
       {!clip && <p className="px-3 pb-2 pt-2 text-[12px] text-muted">{t("Select one video or audio clip on the timeline to analyse it.")}</p>}
 
       <Section title={t("Silence detection")} right={<AudioLines size={14} className="text-dim" />}>

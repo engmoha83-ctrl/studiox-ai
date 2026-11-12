@@ -359,7 +359,8 @@ export function buildExport(
         // animated position/scale/rotation: pad into a transparent frame and map its corners per frame
         const PW = Math.max(CW, size.w + 2 * PAD);
         const PH = Math.max(CH, size.h + 2 * PAD);
-        const tv = `(in/${f(fps)})`;
+        // perspective counts input frames from 1 (in = frame_count + 1), so frame 0 is in=1
+        const tv = `((in-1)/${f(fps)})`;
         const kf = clip.keyframes!;
         const K = `((${kfExpr(kf.scale, clip.transform.scale, tv)})/${f(size.maxScale)})`;
         const R = `((${kfExpr(kf.rotation, clip.transform.rotation, tv)})*PI/180)`;

@@ -64,5 +64,6 @@
 | | Local model manager (whisper.cpp models: download / cancel / delete, hardware recommendation) | ✅ |
 | | Smart reframe 16:9 → 9:16 / 1:1 / 4:5 (and back) following motion + detail; user-positioned clips untouched | ✅ (tracker tested in Rust, render pixel-verified) |
 | | AI editing assistant — Arabic/English built-in commands (offline), optional local Ollama model, plan → approve → one undo step per operation | ✅ (Ollama path tested against a stand-in server, not a real model) |
-| | Face recognition, background removal, rough cuts, B-roll suggestions | ❌ (M6) |
+| | Face detection (local YuNet) → smart reframe follows people; overlays follow a face (position + optional scale) | ✅ (detector matches OpenCV; render pixel-verified; app E2E with a real face video) |
+| | Smart scene selection, rough cuts, automatic editing, background removal, external AI providers | ❌ (M6, next) |
 | Advanced (§12) | Smart timeline inspector, brand kit, templates, custom shortcuts, plugins | ❌ |

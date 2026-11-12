@@ -57,7 +57,7 @@ export function describeOp(o: AssistantOp): string {
     case "color":
       return t("Apply the colour look “{{name}}” to all video clips", { name: t(COLOR_PRESETS.find((p) => p.id === o.preset)?.name ?? o.preset) });
     case "reframe":
-      return t("Smart reframe to {{a}} (keeps the moving subject in frame)", { a: o.aspect });
+      return t("Smart reframe to {{a}} (keeps the person or moving subject in frame)", { a: o.aspect });
     case "subtitles":
       return o.translate ? t("Generate subtitles translated to English") : t("Generate automatic subtitles ({{l}})", { l: o.language === "auto" ? t("Auto-detect") : o.language });
     case "title":
@@ -181,7 +181,7 @@ async function reframe(aspect: string, onStatus: (s: string) => void): Promise<s
   const p = getProject()!;
   const a = REFRAME_ASPECTS.find((x) => x.id === aspect)!;
   if (Math.abs(p.settings.width / p.settings.height - a.w / a.h) < 0.01) return t("The project is already {{a}}.", { a: aspect });
-  const plan = await planReframe(a, (done, total) => onStatus(t("Tracking the subject… {{d}}/{{n}}", { d: done, n: total })));
+  const plan = await planReframe(a, (done, total, sub) => onStatus(t("Tracking the subject… {{d}}/{{n}}", { d: Math.min(total, done + 1), n: total }) + (sub !== undefined ? ` ${Math.round(sub * 100)}%` : "")));
   applyReframe(plan);
   return t("{{w}}×{{h}}, {{n}} clips reframed", { w: plan.width, h: plan.height, n: Object.keys(plan.results).length }) + (plan.skipped.length ? " · " + t("{{n}} positioned clips left as they were", { n: plan.skipped.length }) : "");
 }

@@ -1,6 +1,6 @@
 [package]
 name = "studiox-ai"
-version = "0.4.0"
+version = "0.5.0"
 description = "STUDIOX AI — professional AI-powered desktop video editor"
 authors = ["StudioX"]
 edition = "2021"
@@ -24,9 +24,18 @@ thiserror = "2"
 base64 = "0.22"
 sysinfo = "0.40"
 ureq = { version = "2", features = ["json"] }
+tract-onnx = "0.23"
 
 [profile.release]
 codegen-units = 1
 lto = true
 opt-level = 3
 strip = true
+
+# keep local AI inference usable in debug builds
+[profile.dev.package.tract-core]
+opt-level = 3
+[profile.dev.package.tract-linalg]
+opt-level = 3
+[profile.dev.package.tract-data]
+opt-level = 3
